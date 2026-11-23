@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>오프라인 번역</title>
+<meta name="description" content="인터넷 없이 쓰는 한영 음성 번역기. Moonshine 음성인식 + 오프라인 번역.">
+<meta name="theme-color" content="#1A73E8">
+<link rel="manifest" href="./manifest.json">
+<link rel="icon" href="./icons/icon-192.png">
+<link rel="apple-touch-icon" href="./icons/apple-touch-icon.png">
+<link rel="stylesheet" href="./styles.css">
+<script type="importmap">
+{ "imports": { "onnxruntime-common": "./vendor/ort/ort.bundle.min.mjs", "onnxruntime-web": "./vendor/ort/ort.bundle.min.mjs" } }
+</script>
+</head>
+<body>
+<header class="topbar">
+  <h1>오프라인 번역</h1>
+  <span id="statusDot" class="status-dot off" title="모델 상태"></span>
+  <span id="statusText" class="status-text">모델이 필요합니다</span>
+</header>
+
+<main>
+  <!-- 언어 선택 바 -->
+  <section class="langbar" aria-label="번역 방향">
+    <button id="langFrom" class="lang-btn" type="button">한국어</button>
+    <button id="swapBtn" class="swap-btn" type="button" aria-label="언어 바꾸기">⇄</button>
+    <button id="langTo" class="lang-btn" type="button">English</button>
+  </section>
+
+  <!-- 모델 다운로드 -->
+  <section id="modelBox" class="model-box">
+    <p id="modelInfo">이 방향으로 쓰려면 모델을 받아야 합니다.</p>
+    <div id="downloadProgress" class="progress" hidden>
+      <div id="downloadBar" class="progress-bar"></div>
+    </div>
+    <p id="downloadLabel" class="download-label" hidden></p>
+    <button id="downloadBtn" class="btn primary" type="button">모델 받기</button>
+  </section>
+
+  <!-- 입력 카드 -->
+  <section class="card">
+    <textarea id="inputText" rows="3" placeholder="번역할 텍스트 입력" aria-label="번역할 텍스트 입력"></textarea>
+    <div class="card-actions">
+      <button id="micBtn" class="mic-btn" type="button" aria-label="마이크로 말하기" disabled>
+        <svg viewBox="0 0 24 24" width="26" height="26" aria-hidden="true"><path fill="currentColor" d="M12 15a3.5 3.5 0 0 0 3.5-3.5v-6a3.5 3.5 0 1 0-7 0v6A3.5 3.5 0 0 0 12 15zm6-3.5a6 6 0 0 1-12 0H4a8 8 0 0 0 7 7.94V22h2v-2.06a8 8 0 0 0 7-7.94h-2z"/></svg>
+      </button>
+      <button id="convBtn" class="btn" type="button" disabled>대화 모드</button>
+      <button id="translateBtn" class="btn primary" type="button">번역하기</button>
+    </div>
+    <div id="listening" class="listening" hidden>
+      <span class="pulse-dot" aria-hidden="true"></span>
+      <span class="bars" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></span>
+      <span id="listeningText">듣는 중…</span>
+      <button id="stopListenBtn" class="btn small" type="button">그만 듣기</button>
+    </div>
+    <p id="micHint" class="hint">마이크: 말하면 0.9초 침묵 뒤 자동으로 인식합니다. (최대 30초)</p>
+  </section>
+
+  <!-- 인식 결과 (고칠 수 있음) -->
+  <section id="recognizedWrap" class="card" hidden>
+    <label class="card-label" for="recognizedText">인식된 글자 — 틀린 부분은 고치고 번역하기를 누르세요</label>
+    <textarea id="recognizedText" rows="3" aria-label="인식된 글자"></textarea>
+    <div class="card-actions">
+      <button id="retranslateBtn" class="btn primary" type="button">번역하기</button>
+    </div>
+  </section>
+
+  <!-- 결과 카드 -->
+  <section id="resultWrap" class="card result" hidden>
+    <p id="resultText" class="result-text"></p>
+    <div class="card-actions">
+      <button id="speakBtn" class="btn" type="button">
+        <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="currentColor" d="M3 9v6h4l5 5V4L7 9H3zm13.5 3a4.5 4.5 0 0 0-2.5-4.03v8.05A4.47 4.47 0 0 0 16.5 12zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/></svg>
+        듣기
+      </button>
+      <button id="copyBtn" class="btn" type="button">
+        <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="currentColor" d="M16 1H4a2 2 0 0 0-2 2v14h2V3h12V1zm3 4H8a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2zm0 16H8V7h11v14z"/></svg>
+        복사
+      </button>
+    </div>
+  </section>
+
+  <!-- 대화 기록 -->
+  <section id="convWrap" hidden>
+    <div class="section-head">
+      <h2>대화</h2>
+      <button id="convClearBtn" class="btn small" type="button">대화 지우기</button>
+    </div>
+    <ul id="convList" class="conv-list"></ul>
+  </section>
+
+  <!-- 최근 번역 기록 -->
+  <section>
+    <h2>최근 번역</h2>
+    <ul id="historyList" class="history-list"></ul>
+    <p id="historyEmpty" class="hint">아직 번역 기록이 없습니다. 기록은 이 폰에만 저장됩니다.</p>
+  </section>
+</main>
+
+<script type="module" src="./app.js"></script>
+</body>
+</html>

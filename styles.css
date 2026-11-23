@@ -1,0 +1,117 @@
+/* 오프라인 번역기 — 구글번역 앱 흐름을 따르되 로고·상표는 쓰지 않음.
+   흰 배경 + 파랑 한 색. 장식 없음. */
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0;
+  background: #FFFFFF;
+  color: #202124;
+  font-family: Roboto, system-ui, -apple-system, "Segoe UI", sans-serif;
+  font-size: 16px;
+  line-height: 1.5;
+}
+main { max-width: 640px; margin: 0 auto; padding: 0 16px 48px; }
+h1 { font-size: 20px; margin: 0; font-weight: 500; }
+h2 { font-size: 15px; font-weight: 500; color: #5F6368; margin: 24px 0 8px; }
+button { font: inherit; cursor: pointer; }
+button:disabled { opacity: .45; cursor: default; }
+button:focus-visible, textarea:focus-visible { outline: 2px solid #1A73E8; outline-offset: 2px; }
+textarea {
+  width: 100%; border: none; resize: vertical;
+  font: inherit; color: #202124; background: transparent;
+  padding: 4px 0; min-height: 64px;
+}
+textarea::placeholder { color: #80868B; }
+
+/* 상단 상태 */
+.topbar {
+  display: flex; align-items: center; gap: 8px;
+  max-width: 640px; margin: 0 auto; padding: 14px 16px 4px;
+}
+.status-dot { width: 10px; height: 10px; border-radius: 50%; background: #DADCE0; flex: none; }
+.status-dot.off { background: #DADCE0; }
+.status-dot.busy { background: #F9AB00; }
+.status-dot.ready { background: #1E8E3E; }
+.status-text { font-size: 13px; color: #5F6368; margin-left: auto; }
+
+/* 언어 바 */
+.langbar {
+  display: flex; align-items: center; gap: 4px;
+  border-bottom: 1px solid #DADCE0;
+  padding: 8px 0; margin-bottom: 16px;
+}
+.lang-btn {
+  flex: 1; border: none; background: none;
+  font-size: 17px; color: #1A73E8; font-weight: 500;
+  padding: 10px 4px; min-height: 44px;
+}
+.swap-btn {
+  flex: none; width: 44px; height: 44px; border-radius: 50%;
+  border: 1px solid #DADCE0; background: #FFFFFF;
+  color: #5F6368; font-size: 20px; line-height: 1;
+}
+.swap-btn:active { background: #E8F0FE; }
+
+/* 모델 박스 */
+.model-box {
+  border: 1px solid #DADCE0; border-radius: 12px;
+  padding: 12px 14px; margin-bottom: 16px; background: #F8F9FA;
+}
+.model-box p { margin: 0 0 10px; font-size: 14px; }
+.progress { height: 6px; background: #DADCE0; border-radius: 3px; overflow: hidden; margin-bottom: 8px; }
+.progress-bar { height: 100%; width: 0%; background: #1A73E8; transition: width .2s; }
+.download-label { font-size: 13px; color: #5F6368; margin: 0 0 10px; }
+
+/* 카드 */
+.card {
+  border: 1px solid #DADCE0; border-radius: 12px;
+  padding: 14px; margin-bottom: 12px;
+}
+.card.result { background: #E8F0FE; border-color: #E8F0FE; }
+.card-label { display: block; font-size: 13px; color: #5F6368; margin-bottom: 6px; }
+.result-text { font-size: 22px; font-weight: 500; margin: 0 0 12px; line-height: 1.4; word-break: keep-all; overflow-wrap: anywhere; }
+.card-actions { display: flex; align-items: center; gap: 8px; margin-top: 10px; }
+.hint { font-size: 13px; color: #5F6368; margin: 8px 0 0; }
+
+/* 버튼 */
+.btn {
+  border: 1px solid #DADCE0; background: #FFFFFF; color: #1A73E8;
+  border-radius: 20px; padding: 9px 16px; min-height: 44px; font-weight: 500;
+  display: inline-flex; align-items: center; gap: 6px;
+}
+.btn.primary { background: #1A73E8; border-color: #1A73E8; color: #FFFFFF; }
+.btn.small { min-height: 36px; padding: 6px 12px; font-size: 13px; }
+.btn.active { background: #E8F0FE; border-color: #1A73E8; }
+.mic-btn {
+  width: 56px; height: 56px; border-radius: 50%; flex: none;
+  border: none; background: #1A73E8; color: #FFFFFF;
+  display: inline-flex; align-items: center; justify-content: center;
+}
+.mic-btn.recording { background: #D93025; }
+
+/* 듣는 중 표시 */
+.listening { display: flex; align-items: center; gap: 10px; margin-top: 12px; padding-top: 12px; border-top: 1px solid #DADCE0; }
+.pulse-dot { width: 12px; height: 12px; border-radius: 50%; background: #1A73E8; animation: pulse 1.2s ease-in-out infinite; flex: none; }
+@keyframes pulse { 0%, 100% { transform: scale(1); opacity: 1; } 50% { transform: scale(1.5); opacity: .55; } }
+.bars { display: inline-flex; align-items: flex-end; gap: 2px; height: 20px; flex: none; }
+.bars i { width: 3px; height: 4px; background: #1A73E8; border-radius: 2px; }
+#listeningText { font-size: 14px; color: #5F6368; }
+#stopListenBtn { margin-left: auto; }
+
+/* 대화·기록 목록 */
+.section-head { display: flex; align-items: center; justify-content: space-between; }
+.section-head h2 { margin: 24px 0 8px; }
+.conv-list, .history-list { list-style: none; margin: 0; padding: 0; }
+.conv-list li, .history-list li {
+  border-bottom: 1px solid #DADCE0; padding: 10px 2px; cursor: pointer;
+}
+.conv-list .src, .history-list .src { font-size: 15px; }
+.conv-list .dst, .history-list .dst { font-size: 15px; color: #1A73E8; margin-top: 2px; }
+.conv-list .meta, .history-list .meta { font-size: 12px; color: #80868B; margin-top: 2px; }
+.conv-list .src[contenteditable="true"] { outline: 2px solid #1A73E8; border-radius: 4px; }
+.history-list li:active { background: #F8F9FA; }
+
+@media (prefers-reduced-motion: reduce) {
+  .pulse-dot { animation: none; }
+  .progress-bar { transition: none; }
+}

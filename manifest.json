@@ -1,0 +1,1 @@
+{"background_color":"#FFFFFF","description":"인터넷 없이 쓰는 한영 음성 번역기","display":"standalone","icons":[{"sizes":"192x192","src":"./icons/icon-192.png","type":"image/png"},{"sizes":"512x512","src":"./icons/icon-512.png","type":"image/png"}],"lang":"ko","name":"오프라인 번역","orientation":"portrait","scope":".","short_name":"번역","start_url":".","theme_color":"#1A73E8"}
