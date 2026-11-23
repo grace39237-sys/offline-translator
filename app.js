@@ -10,7 +10,11 @@ import { VoiceCapture } from './vad.js';
 // (import map 덕분에 transformers.js가 쓰는 것과 같은 ort 인스턴스다.)
 // GitHub Pages는 COOP/COEP 헤더가 없어 SharedArrayBuffer가 안 되므로
 // 스레드는 1개로 고정한다.
-ort.env.wasm.wasmPaths = './vendor/ort/';
+// NOTE: wasmPaths에 상대 경로('./vendor/ort/')를 쓰면 ORT 번들 자신의
+// 위치(vendor/ort/)를 기준으로 다시 해석돼서
+// vendor/ort/vendor/ort/ort-wasm-....mjs 로 이중 경로가 된다
+// (라이브 브라우저 테스트에서 404로 확인됨). 그래서 절대 URL로 지정한다.
+ort.env.wasm.wasmPaths = new URL('./vendor/ort/', import.meta.url).href;
 ort.env.wasm.numThreads = 1;
 
 if ('serviceWorker' in navigator) {
@@ -18,8 +22,8 @@ if ('serviceWorker' in navigator) {
 }
 
 const DIRECTIONS = {
-  'ko-en': { from: '한국어', to: 'English', asr: ASR_MODEL_KO, asrLang: 'korean', mt: MT_MODEL_KO_EN, size: '약 155MB' },
-  'en-ko': { from: 'English', to: '한국어', asr: ASR_MODEL_EN, asrLang: 'english', mt: MT_MODEL_EN_KO, size: '약 940MB' },
+  'ko-en': { from: '한국어', to: 'English', asr: ASR_MODEL_KO, asrLang: 'korean', mt: MT_MODEL_KO_EN, size: '약 155MB', sizeBytes: 155 * 1048576 },
+  'en-ko': { from: 'English', to: '한국어', asr: ASR_MODEL_EN, asrLang: 'english', mt: MT_MODEL_EN_KO, size: '약 940MB', sizeBytes: 940 * 1048576 },
 };
 const TARGET_LANG = { 'ko-en': 'en-US', 'en-ko': 'ko-KR' };
 
@@ -58,6 +62,8 @@ function fmtMB(n) {
   return n > 0 ? `${(n / 1048576).toFixed(0)}MB` : '';
 }
 
+let progressExpected = 0; // 현재 받는 방향의 전체 예상 용량(바이트)
+
 function onProgress(info) {
   if (info.status === 'progress' && info.total) {
     progressFiles.set(info.file, { loaded: info.loaded, total: info.total });
@@ -65,12 +71,14 @@ function onProgress(info) {
     const prev = progressFiles.get(info.file);
     progressFiles.set(info.file, { loaded: prev?.total || 0, total: prev?.total || 0 });
   }
-  let loadedBytes = 0, totalBytes = 0;
-  for (const f of progressFiles.values()) { loadedBytes += f.loaded; totalBytes += f.total; }
-  if (totalBytes > 0) {
-    const pct = Math.min(100, Math.round((loadedBytes / totalBytes) * 100));
+  // 파일별 합계가 아니라 방향 전체 예상 용량 기준으로 보여준다.
+  // (파일별 합계는 첫 파일이 끝나면 100%로 보여서 오해가 생긴다.)
+  let loadedBytes = 0;
+  for (const f of progressFiles.values()) { loadedBytes += f.loaded; }
+  if (progressExpected > 0) {
+    const pct = Math.min(100, Math.round((loadedBytes / progressExpected) * 100));
     els.downloadBar.style.width = `${pct}%`;
-    els.downloadLabel.textContent = `${fmtMB(loadedBytes)} / ${fmtMB(totalBytes)} (${pct}%)`;
+    els.downloadLabel.textContent = `${fmtMB(loadedBytes)} / 약 ${fmtMB(progressExpected)} (${pct}%)`;
   }
 }
 
@@ -100,6 +108,7 @@ async function ensureModels(dir) {
   if (loaded[dir]) return loaded[dir];
   const d = DIRECTIONS[dir];
   progressFiles.clear();
+  progressExpected = d.sizeBytes;
   els.downloadBtn.disabled = true;
   els.downloadProgress.hidden = false;
   els.downloadLabel.hidden = false;
@@ -160,7 +169,14 @@ function showResult(text) {
 async function doTranslate(srcText) {
   const src = (srcText ?? els.inputText.value).trim();
   if (!src) return null;
-  const models = await ensureModels(direction);
+  let models;
+  try {
+    models = await ensureModels(direction);
+  } catch (e) {
+    // 모델이 없으면 번역이 안 된다. 조용히 넘어가지 말고 알려준다.
+    showResult('모델을 먼저 받아야 합니다. 위의 "모델 받기" 버튼을 눌러 주세요.');
+    return null;
+  }
   setStatus('busy', '번역 중…');
   try {
     const dst = await translate(models.mt, src, direction);

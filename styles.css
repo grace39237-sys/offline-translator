@@ -1,5 +1,9 @@
 /* 오프라인 번역기 — 구글번역 앱 흐름을 따르되 로고·상표는 쓰지 않음.
    흰 배경 + 파랑 한 색. 장식 없음. */
+/* hidden 속성은 어떤 display 규칙보다 우선해야 한다.
+   (.listening의 display:flex 등이 hidden을 이겨서 "듣는 중…"이
+   처음부터 보이는 버그가 있었다.) */
+[hidden] { display: none !important; }
 * { box-sizing: border-box; }
 html { -webkit-text-size-adjust: 100%; }
 body {
