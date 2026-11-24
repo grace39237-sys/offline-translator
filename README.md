@@ -30,17 +30,18 @@
 
 | 방향 | 음성인식 | 번역 | 합계 |
 |---|---|---|---|
-| 한국어 → 영어 | Moonshine tiny-ko ~32MB | Opus-MT ko-en q8 ~123MB | **약 155MB** |
+| 한국어 → 영어 | Moonshine base-ko ~67MB | Opus-MT ko-en q8 ~123MB | **약 190MB** |
 | 영어 → 한국어 | Moonshine tiny-en ~32MB | NLLB-200-distilled-600M q8 ~894MB | **약 940MB** |
-| 양쪽 모두 | | | **약 1.09GB** |
+| 양쪽 모두 | | | **약 1.10GB** |
 
 모델은 Hugging Face Hub에서 받아 브라우저 캐시에 저장됩니다.
 앱 자체(코드+아이콘+JS 라이브러리)는 약 33MB로 이 저장소에 포함돼 있습니다.
 
 ## 사용한 모델 (정확한 ID)
 
-- 음성인식(한국어): `onnx-community/moonshine-tiny-ko-ONNX`
-  (Moonshine tiny, 27M 파라미터, 양자화 q8)
+- 음성인식(한국어): `onnx-community/moonshine-base-ko-ONNX`
+  (Moonshine base, 62M 파라미터, 양자화 q8) — 2026-11-24부터 기본값.
+  tiny-ko는 실폰 테스트에서 인식률이 너무 안 좋다고 보고돼 교체됨.
 - 음성인식(영어): `onnx-community/moonshine-tiny-ONNX`
 - 번역(한국어→영어): `Xenova/opus-mt-ko-en` (q8)
 - 번역(영어→한국어): `Xenova/nllb-200-distilled-600M` (q8)
@@ -52,8 +53,9 @@
 - **한국어 인식 정확도** (같은 테스트 문장, 5.5초 음성 기준):
   tiny-ko는 2단어 오류("소로티"→"서로 티", "내일"→"매일"),
   base-ko(`onnx-community/moonshine-base-ko-ONNX`)는 구두점 제외하고 완벽했습니다.
-  v1 기본값은 tiny-ko입니다. base-ko로 바꾸려면 `asr.js`의
-  `ASR_MODEL_KO` 상수 하나만 바꾸면 됩니다 (base-ko q8은 약 67MB).
+  2026-11-24 실폰 테스트에서 tiny-ko 인식률이 너무 안 좋다고 보고돼
+  기본값을 base-ko로 바꿨습니다. tiny-ko로 되돌리려면 `asr.js`의
+  `ASR_MODEL_KO` 상수 하나만 바꾸면 됩니다.
   인식이 틀렸을 때는 결과 카드에서 직접 고치고 번역하세요.
 - **영어→한국어 번역이 무겁습니다.** NLLB-200 q8이 약 894MB라 첫 다운로드와
   로딩이 오래 걸립니다. 영어→한국어용 Opus-MT ONNX 모델이 존재하지 않아서
