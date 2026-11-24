@@ -29,7 +29,7 @@ const DIRECTIONS = {
   'ko-en': { from: '한국어', to: 'English', asr: ASR_MODEL_KO, asrLang: 'korean', mt: MT_MODEL_KO_EN, size: '약 190MB', sizeBytes: 190 * 1048576, asrLabel: 'base-ko' },
   'en-ko': { from: 'English', to: '한국어', asr: ASR_MODEL_EN, asrLang: 'english', mt: MT_MODEL_EN_KO, size: '약 940MB', sizeBytes: 940 * 1048576, asrLabel: 'tiny-en' },
 };
-const APP_VERSION = 'v5';
+const APP_VERSION = 'v6';
 const TARGET_LANG = { 'ko-en': 'en-US', 'en-ko': 'ko-KR' };
 
 const $ = (id) => document.getElementById(id);
@@ -413,8 +413,14 @@ async function hasCachedModel(modelId) {
 
 async function autoLoadSavedModels() {
   const d = DIRECTIONS[direction];
-  const saved = (await hasCachedModel(d.asr)) && (await hasCachedModel(d.mt));
-  if (!saved) return;
+  const asrCached = await hasCachedModel(d.asr);
+  const mtCached = await hasCachedModel(d.mt);
+  console.log('[auto-load]', d.asr, asrCached, d.mt, mtCached);
+  if (!asrCached || !mtCached) {
+    // 저장된 모델이 없으면 버튼 표시로 폴백. 진단용으로 박스에 표시한다.
+    els.modelInfo.textContent += ' (폰에 저장된 모델이 없습니다)';
+    return;
+  }
   setStatus('busy', '저장된 모델 불러오는 중…');
   try {
     await ensureModels(direction);
