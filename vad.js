@@ -38,6 +38,8 @@ export class VoiceCapture {
     this.speaking = false;
     this.silenceFrames = 0;
     this.speechFrames = 0;
+    this.speechStart = 0;
+    this.speechEnd = 0;
     this.utterance = [];
     this.running = true;
   }
@@ -99,12 +101,16 @@ export class VoiceCapture {
       this.silenceFrames = 0;
       this.speechFrames = 0;
       this.utterance = [...this.preRoll];
+      // 말 시작 직전 0.15초만 남겨서 첫 음절이 잘리지 않게 한다.
+      this.speechStart = Math.max(0, this.utterance.length - 2400);
+      this.speechEnd = this.utterance.length;
     }
     if (this.speaking) {
       this.utterance.push(...frame);
       if (isSpeech) {
         this.silenceFrames = 0;
         this.speechFrames++;
+        this.speechEnd = this.utterance.length;
       } else if (++this.silenceFrames >= SILENCE_FRAMES_TO_END) {
         this._emit();
         return;
@@ -114,12 +120,15 @@ export class VoiceCapture {
   }
 
   _emit() {
-    // 끝 여유 0.3초는 이미 침묵 프레임에 들어 있다
-    const out = new Float32Array(this.utterance);
+    // 말 앞뒤 침묵은 잘라내고 진짜 말한 구간만 인식에 넘긴다.
+    // (프리롤 0.5초 + 끝 0.9초 침묵이 그대로 들어가면 모델이 헛소리·반복을 낸다.)
+    const out = new Float32Array(this.utterance.slice(this.speechStart ?? 0, this.speechEnd ?? this.utterance.length));
     const speechFrames = this.speechFrames;
     this.speaking = false;
     this.silenceFrames = 0;
     this.speechFrames = 0;
+    this.speechStart = 0;
+    this.speechEnd = 0;
     this.utterance = [];
     // 0.4초 미만, 또는 진짜 말(임계값 넘는 프레임)이 0.5초 미만이면 잡음으로 버린다.
     // 짧은 소음 spikes가 발화로 인식돼서 음성인식이 헛소리를 내는 것을 막는다.

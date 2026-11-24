@@ -12,6 +12,7 @@ import {
   AutoFeatureExtractor,
   MoonshineProcessor,
 } from './vendor/transformers.web.min.js';
+import { collapseRepeats } from './textutil.js';
 
 // 한국어 모델을 바꾸려면 이 상수 하나만 바꾸면 된다.
 // base-ko (기본값, ~67MB, Node 테스트에서 한국어 완벽 인식)
@@ -21,7 +22,8 @@ export const ASR_MODEL_EN = 'onnx-community/moonshine-tiny-ONNX';
 
 // 초당 최대 생성 토큰: 논문 휴리스틱 6/s는 한국어에 너무 적다.
 // 5.5초 문장이 30토큰에 잘렸고, 12/s도 60토큰에 잘렸다.
-// Node 테스트에서 16/s로 완전한 문장이 나왔다. 반복 출력은 없었다.
+// Node 테스트에서 16/s로 완전한 문장이 나왔다. 실폰에서는 반복 출력이
+// 보고됨 (2026-11-24) — transcribe()에서 collapseRepeats로 한 번으로 줄인다.
 const TOKENS_PER_SEC = 16;
 
 const cache = new Map();
@@ -49,5 +51,5 @@ export async function transcribe(asr, audio16k, language) {
     task: 'transcribe',
     ...inputs,
   });
-  return asr.processor.batch_decode(outputs, { skip_special_tokens: true })[0].trim();
+  return collapseRepeats(asr.processor.batch_decode(outputs, { skip_special_tokens: true })[0].trim());
 }
