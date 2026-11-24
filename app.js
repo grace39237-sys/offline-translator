@@ -29,7 +29,7 @@ const DIRECTIONS = {
   'ko-en': { from: '한국어', to: 'English', asr: ASR_MODEL_KO, asrLang: 'korean', mt: MT_MODEL_KO_EN, size: '약 190MB', sizeBytes: 190 * 1048576, asrLabel: 'base-ko' },
   'en-ko': { from: 'English', to: '한국어', asr: ASR_MODEL_EN, asrLang: 'english', mt: MT_MODEL_EN_KO, size: '약 300MB', sizeBytes: 300 * 1048576, asrLabel: 'tiny-en' },
 };
-const APP_VERSION = 'v16';
+const APP_VERSION = 'v17';
 const TARGET_LANG = { 'ko-en': 'en-US', 'en-ko': 'ko-KR' };
 
 // 듣기 감도: 마이크가 말을 얼마나 쉽게 듣는지. 화면 표시는 소음 정도다:
@@ -274,6 +274,68 @@ function speak(text) {
 }
 
 // ---- 마이크 / 대화 모드 ----
+// 인식·번역은 한 번에 하나만 돈다. 같은 모델을 두 번 동시에 돌리면 둘 다 죽는다
+// (2026-11-24 실폰 보고: 7초 걸리는 인식 중에 다시 말하면 앞 작업이 중단됨).
+// 처리 중 새 발화가 들어오면 1개만 대기열에 둔다 (더 새 발화가 오면 갈아끼운다).
+// 마이크를 눌러 새 작업을 시작하면 runId가 올라가서 진행 중이던 옛날 작업의
+// 결과는 버려진다.
+let processing = false;
+let queued = null;
+let runId = 0;
+
+async function runTask(audio, mode) {
+  const myRun = runId;
+  try {
+    // 발화 받자마자 마이크를 끈다. 소리는 이미 받아뒀으니 인식에는 지장 없고,
+    // 인식 중에 새 말이 들어와 앞 작업을 죽이는 일을 막는다.
+    if (mode === 'single') stopCapture();
+    setListeningUI(true, '인식 중…');
+    const dirAtSpeech = direction;
+    const m = await ensureModels(dirAtSpeech);
+    const lang = DIRECTIONS[dirAtSpeech].asrLang;
+    const text = await transcribe(m.asr, audio, lang);
+    // 그 사이 마이크를 눌러 새 작업이 시작됐으면 이 결과는 버린다.
+    if (myRun !== runId) return;
+    if (!text) return;
+    // 인식 결과가 그 방향의 말이 아니면(예: 한국어 모드인데 한글이 하나도
+    // 없으면) 잘못 들은 거라 번역하면 헛소리가 나온다. 번역하지 않고
+    // 인식된 글자만 보여주고 다시 말하게 한다.
+    const looksRight = dirAtSpeech === 'ko-en' ? /[가-힣]/.test(text) : /[a-zA-Z]/.test(text);
+    if (!looksRight) {
+      if (mode === 'single' && inputMode !== 'dictate') {
+        els.recognizedText.value = text;
+        els.recognizedWrap.hidden = false;
+      }
+      els.micHint.textContent = '잘 안 들렸어요. 다시 말해주세요. (주변 소음이 있으면 조용한 곳에서 해보세요)';
+      return;
+    }
+    if (mode === 'single') {
+      if (inputMode === 'dictate') {
+        // 받아쓰기 모드: 인식된 글자를 이어붙이고 계속 듣는다. 번역은 안 한다.
+        const prev = els.recognizedText.value.trim();
+        els.recognizedText.value = prev ? `${prev} ${text}` : text;
+        els.recognizedWrap.hidden = false;
+      } else {
+        els.recognizedText.value = text;
+        els.recognizedWrap.hidden = false;
+        // 인식된 글자를 보여주면서 바로 번역도 한다.
+        // (틀렸으면 고치고 아래 "번역하기"를 누르면 다시 번역된다.)
+        await doTranslate(text);
+      }
+    } else {
+      await addConvTurn(text, dirAtSpeech);
+    }
+  } catch (e) {
+    console.error(e);
+    if (myRun === runId) setListeningUI(true, `인식 실패: ${e.message}`);
+  } finally {
+    if (myRun === runId) {
+      if (mode === 'single') setListeningUI(false);
+      else setListeningUI(true, '대화 모드 — 듣는 중… 보내기를 누르면 그 차례를 바로 번역합니다');
+    }
+  }
+}
+
 function setListeningUI(on, text) {
   els.listening.hidden = !on;
   if (text) els.listeningText.textContent = text;
@@ -298,45 +360,16 @@ async function startCapture(mode) {
     onSpeechStart: () => setListeningUI(true, '듣고 있어요…'),
     onSpeechEnd: () => setListeningUI(true, mode === 'conv' ? '대화 모드 — 듣는 중… 보내기를 누르면 그 차례를 바로 번역합니다' : '듣는 중… 보내기를 누르면 바로 인식합니다'),
     onUtterance: async (audio) => {
-      try {
-        const dirAtSpeech = direction;
-        const m = await ensureModels(dirAtSpeech);
-        const lang = DIRECTIONS[dirAtSpeech].asrLang;
-        const text = await transcribe(m.asr, audio, lang);
-        if (!text) return;
-        // 인식 결과가 그 방향의 말이 아니면(예: 한국어 모드인데 한글이 하나도
-        // 없으면) 잘못 들은 거라 번역하면 헛소리가 나온다. 번역하지 않고
-        // 인식된 글자만 보여주고 다시 말하게 한다.
-        const looksRight = dirAtSpeech === 'ko-en' ? /[가-힣]/.test(text) : /[a-zA-Z]/.test(text);
-        if (!looksRight) {
-          if (mode === 'single' && inputMode !== 'dictate') {
-            els.recognizedText.value = text;
-            els.recognizedWrap.hidden = false;
-          }
-          els.micHint.textContent = '잘 안 들렸어요. 다시 말해주세요. (주변 소음이 있으면 조용한 곳에서 해보세요)';
-          return;
-        }
-        if (mode === 'single') {
-          if (inputMode === 'dictate') {
-            // 받아쓰기 모드: 인식된 글자를 이어붙이고 계속 듣는다. 번역은 안 한다.
-            const prev = els.recognizedText.value.trim();
-            els.recognizedText.value = prev ? `${prev} ${text}` : text;
-            els.recognizedWrap.hidden = false;
-          } else {
-            stopCapture();
-            els.recognizedText.value = text;
-            els.recognizedWrap.hidden = false;
-            // 인식된 글자를 보여주면서 바로 번역도 한다.
-            // (틀렸으면 고치고 아래 "번역하기"를 누르면 다시 번역된다.)
-            doTranslate(text);
-          }
-        } else {
-          addConvTurn(text, dirAtSpeech);
-        }
-      } catch (e) {
-        console.error(e);
-        setListeningUI(true, `인식 실패: ${e.message}`);
+      // 처리 중이면 1개만 대기열에 둔다 (더 새 발화가 오면 갈아끼운다).
+      if (processing) { queued = { audio, mode }; return; }
+      processing = true;
+      let current = { audio, mode };
+      while (current) {
+        await runTask(current.audio, current.mode);
+        current = queued;
+        queued = null;
       }
+      processing = false;
     },
   });
   try {
@@ -348,6 +381,8 @@ async function startCapture(mode) {
     return;
   }
   captureMode = mode;
+  // 마이크를 새로 켜면 진행 중이던 옛날 작업의 결과는 버린다 (새 작업이 우선).
+  runId++;
   setListeningUI(true, mode === 'conv' ? '대화 모드 — 듣는 중… 보내기를 누르면 그 차례를 바로 번역합니다' : '듣는 중… 보내기를 누르면 바로 인식합니다');
 }
 
@@ -368,7 +403,7 @@ function addConvTurn(srcText, dirAtSpeech) {
   const d = DIRECTIONS[dirAtSpeech];
   li.querySelector('.meta').textContent = `${d.from} → ${d.to} · 탭해서 고치기`;
   els.convList.prepend(li);
-  (async () => {
+  return (async () => {
     try {
       const m = await ensureModels(dirAtSpeech);
       const dst = await translate(m.mt, srcText, dirAtSpeech);
@@ -458,6 +493,11 @@ els.convBtn.addEventListener('click', () => {
   }
 });
 els.sendBtn.addEventListener('click', () => {
+  // 인식·번역 중에는 보내기를 눌러도 새 작업이 안 돈다. 기다리라고 알린다.
+  if (processing) {
+    setListeningUI(true, '인식 중이에요. 잠시만요.');
+    return;
+  }
   // 보내기: 지금까지 들은 말을 침묵을 기다리지 않고 바로 인식·번역한다.
   // 대화 모드에서는 그 차례만 끝내고 계속 듣는다.
   if (!capture?.flush()) {
