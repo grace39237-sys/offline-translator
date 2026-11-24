@@ -27,9 +27,9 @@ if (navigator.storage?.persist) navigator.storage.persist().catch(() => {});
 
 const DIRECTIONS = {
   'ko-en': { from: '한국어', to: 'English', asr: ASR_MODEL_KO, asrLang: 'korean', mt: MT_MODEL_KO_EN, size: '약 190MB', sizeBytes: 190 * 1048576, asrLabel: 'base-ko' },
-  'en-ko': { from: 'English', to: '한국어', asr: ASR_MODEL_EN, asrLang: 'english', mt: MT_MODEL_EN_KO, size: '약 940MB', sizeBytes: 940 * 1048576, asrLabel: 'tiny-en' },
+  'en-ko': { from: 'English', to: '한국어', asr: ASR_MODEL_EN, asrLang: 'english', mt: MT_MODEL_EN_KO, size: '약 300MB', sizeBytes: 300 * 1048576, asrLabel: 'tiny-en' },
 };
-const APP_VERSION = 'v7';
+const APP_VERSION = 'v8';
 const TARGET_LANG = { 'ko-en': 'en-US', 'en-ko': 'ko-KR' };
 
 const $ = (id) => document.getElementById(id);
@@ -40,6 +40,8 @@ const els = {
   downloadBtn: $('downloadBtn'), downloadProgress: $('downloadProgress'),
   downloadBar: $('downloadBar'), downloadLabel: $('downloadLabel'),
   inputText: $('inputText'), micBtn: $('micBtn'), convBtn: $('convBtn'),
+  modeTranslateBtn: $('modeTranslateBtn'), modeDictateBtn: $('modeDictateBtn'),
+  recognizedLabel: $('recognizedLabel'),
   translateBtn: $('translateBtn'), listening: $('listening'),
   listeningText: $('listeningText'), stopListenBtn: $('stopListenBtn'),
   micHint: $('micHint'),
@@ -53,6 +55,7 @@ const els = {
 };
 
 let direction = 'ko-en';
+let inputMode = 'translate'; // 'translate' | 'dictate' — 받아쓰기 모드에서는 인식만 하고 번역은 안 한다.
 const loaded = {}; // dir -> { asr, mt }
 const progressFiles = new Map();
 let capture = null;
@@ -110,6 +113,29 @@ function updateModelBox() {
     els.micBtn.disabled = true;
     els.convBtn.disabled = true;
   }
+}
+
+// ---- 번역 / 받아쓰기 모드 ----
+function setMode(next) {
+  if (inputMode === next) return;
+  // 듣는 중이면 멈추고 바꾼다. 대화 모드가 켜져 있었으면 끈다.
+  if (capture) stopCapture();
+  if (convOn) {
+    convOn = false;
+    els.convBtn.classList.remove('active');
+    els.convBtn.textContent = '대화 모드';
+  }
+  inputMode = next;
+  els.modeTranslateBtn.setAttribute('aria-pressed', String(next === 'translate'));
+  els.modeDictateBtn.setAttribute('aria-pressed', String(next === 'dictate'));
+  // 대화 모드는 번역 대화 기능이라 받아쓰기 모드에서는 안 보인다.
+  els.convBtn.hidden = next === 'dictate';
+  els.recognizedLabel.textContent = next === 'dictate'
+    ? '받아쓴 글자 — 말할 때마다 이어붙습니다. 틀린 부분은 고치세요'
+    : '인식된 글자 — 번역이 바로 나옵니다. 틀린 부분은 고치고 "번역하기"를 누르세요';
+  els.micHint.textContent = next === 'dictate'
+    ? '마이크: 말하면 0.9초 침묵 뒤 자동으로 인식해서 아래에 이어붙습니다. 그만 들으려면 마이크를 다시 누르세요. (최대 30초)'
+    : '마이크: 말하면 0.9초 침묵 뒤 자동으로 인식합니다. (최대 30초)';
 }
 
 async function ensureModels(dir) {
@@ -253,12 +279,19 @@ async function startCapture(mode) {
         const text = await transcribe(m.asr, audio, lang);
         if (!text) return;
         if (mode === 'single') {
-          stopCapture();
-          els.recognizedText.value = text;
-          els.recognizedWrap.hidden = false;
-          // 인식된 글자를 보여주면서 바로 번역도 한다.
-          // (틀렸으면 고치고 아래 "번역하기"를 누르면 다시 번역된다.)
-          doTranslate(text);
+          if (inputMode === 'dictate') {
+            // 받아쓰기 모드: 인식된 글자를 이어붙이고 계속 듣는다. 번역은 안 한다.
+            const prev = els.recognizedText.value.trim();
+            els.recognizedText.value = prev ? `${prev} ${text}` : text;
+            els.recognizedWrap.hidden = false;
+          } else {
+            stopCapture();
+            els.recognizedText.value = text;
+            els.recognizedWrap.hidden = false;
+            // 인식된 글자를 보여주면서 바로 번역도 한다.
+            // (틀렸으면 고치고 아래 "번역하기"를 누르면 다시 번역된다.)
+            doTranslate(text);
+          }
         } else {
           addConvTurn(text, dirAtSpeech);
         }
@@ -343,6 +376,8 @@ els.convList.addEventListener('keydown', (e) => {
 });
 
 // ---- 버튼 연결 ----
+els.modeTranslateBtn.addEventListener('click', () => setMode('translate'));
+els.modeDictateBtn.addEventListener('click', () => setMode('dictate'));
 els.downloadBtn.addEventListener('click', () => ensureModels(direction).catch(() => {}));
 els.swapBtn.addEventListener('click', () => {
   direction = direction === 'ko-en' ? 'en-ko' : 'ko-en';

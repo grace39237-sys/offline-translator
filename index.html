@@ -41,6 +41,10 @@
 
   <!-- 입력 카드 -->
   <section class="card">
+    <div class="mode-switch" role="group" aria-label="사용 모드">
+      <button id="modeTranslateBtn" type="button" aria-pressed="true">번역</button>
+      <button id="modeDictateBtn" type="button" aria-pressed="false">받아쓰기</button>
+    </div>
     <textarea id="inputText" rows="3" placeholder="번역할 텍스트 입력" aria-label="번역할 텍스트 입력"></textarea>
     <div class="card-actions">
       <button id="micBtn" class="mic-btn" type="button" aria-label="마이크로 말하기" disabled>
@@ -60,7 +64,7 @@
 
   <!-- 인식 결과 (고칠 수 있음) -->
   <section id="recognizedWrap" class="card" hidden>
-    <label class="card-label" for="recognizedText">인식된 글자 — 번역이 바로 나옵니다. 틀린 부분은 고치고 "번역하기"를 누르세요</label>
+    <label id="recognizedLabel" class="card-label" for="recognizedText">인식된 글자 — 번역이 바로 나옵니다. 틀린 부분은 고치고 "번역하기"를 누르세요</label>
     <textarea id="recognizedText" rows="3" aria-label="인식된 글자"></textarea>
     <div class="card-actions">
       <button id="retranslateBtn" class="btn primary" type="button">번역하기</button>

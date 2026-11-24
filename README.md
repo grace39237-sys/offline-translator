@@ -24,6 +24,10 @@
   말이 끝나면(약 0.9초 침묵) 자동으로 인식→번역해서 화면에 띄웁니다.
   방향은 자동 감지가 아니라 ⇄ 버튼으로 수동 전환합니다.
   상대가 말할 차례가 되면 ⇄를 눌러 방향을 바꿔 주세요.
+- **받아쓰기 모드**: 입력 카드 위의 **받아쓰기**를 고르면 말한 내용이 번역 없이
+  인식된 글자로만 이어붙습니다. 번역이 필요하면 인식된 글자 아래의
+  **번역하기**를 누릅니다. 번역 버튼(입력 글자 번역)은 모드와 관계없이
+  지금처럼 원문+번역문을 같이 보여줍니다.
 - **최근 번역**: 아래 목록에 최근 번역이 폰 안에만 저장됩니다(최대 30개).
 
 ## 첫 실행 다운로드 용량
@@ -31,8 +35,8 @@
 | 방향 | 음성인식 | 번역 | 합계 |
 |---|---|---|---|
 | 한국어 → 영어 | Moonshine base-ko ~67MB | Opus-MT ko-en q8 ~123MB | **약 190MB** |
-| 영어 → 한국어 | Moonshine tiny-en ~32MB | NLLB-200-distilled-600M q8 ~894MB | **약 940MB** |
-| 양쪽 모두 | | | **약 1.10GB** |
+| 영어 → 한국어 | Moonshine tiny-en ~32MB | Opus-MT en-ko q8 ~266MB | **약 300MB** |
+| 양쪽 모두 | | | **약 490MB** |
 
 모델은 Hugging Face Hub에서 받아 브라우저 캐시에 저장됩니다.
 앱 자체(코드+아이콘+JS 라이브러리)는 약 33MB로 이 저장소에 포함돼 있습니다.
@@ -44,7 +48,11 @@
   tiny-ko는 실폰 테스트에서 인식률이 너무 안 좋다고 보고돼 교체됨.
 - 음성인식(영어): `onnx-community/moonshine-tiny-ONNX`
 - 번역(한국어→영어): `Xenova/opus-mt-ko-en` (q8)
-- 번역(영어→한국어): `Xenova/nllb-200-distilled-600M` (q8)
+- 번역(영어→한국어): `teamwon/opus-mt-en-ko-onnx` (q8) —
+  Helsinki-NLP/opus-mt-tc-big-en-ko를 ONNX로 변환·int8 양자화해서
+  Won 계정(teamwon)으로 Hugging Face Hub에 올린 것 (2026-11-24).
+  sepvoc 모델이라 pipeline 대신 수동 generate + tokenizer_target.json
+  디코딩으로 쓴다 (`mt.js` 참고). NLLB-200 q8(~894MB)은 2026-11-24에 교체됨.
 - 런타임: `@huggingface/transformers` **3.8.1** (v3 고정) + onnxruntime-web
   (둘 다 `vendor/`에 포함돼 있어 CDN 없이 동작합니다)
 
@@ -57,10 +65,9 @@
   기본값을 base-ko로 바꿨습니다. tiny-ko로 되돌리려면 `asr.js`의
   `ASR_MODEL_KO` 상수 하나만 바꾸면 됩니다.
   인식이 틀렸을 때는 결과 카드에서 직접 고치고 번역하세요.
-- **영어→한국어 번역이 무겁습니다.** NLLB-200 q8이 약 894MB라 첫 다운로드와
-  로딩이 오래 걸립니다. 영어→한국어용 Opus-MT ONNX 모델이 존재하지 않아서
-  NLLB를 썼습니다 (확인: `Xenova/opus-mt-en-ko`,
-  `onnx-community/opus-mt-en-ko` 등 모두 없음).
+- **영어→한국어 번역 속도**: Opus-MT q8은 Node 테스트에서 문장당 약 0.5초
+  (NLLB는 약 8.9초였다). 다만 5문장 중 1문장("Please send the invoice
+  before Thursday.")에서 invoice(송장)가 빠지는 경우가 있다.
 - **읽어주기(TTS)**는 폰 내장 음성(Chrome Web Speech API)을 씁니다.
   폰 설정에서 한국어/영어 음성 데이터를 받아 두면 오프라인에서도 읽어줍니다.
   폰에 해당 음성이 없으면 읽기가 안 될 수 있습니다.
