@@ -29,7 +29,7 @@ const DIRECTIONS = {
   'ko-en': { from: '한국어', to: 'English', asr: ASR_MODEL_KO, asrLang: 'korean', mt: MT_MODEL_KO_EN, size: '약 190MB', sizeBytes: 190 * 1048576, asrLabel: 'base-ko' },
   'en-ko': { from: 'English', to: '한국어', asr: ASR_MODEL_EN, asrLang: 'english', mt: MT_MODEL_EN_KO, size: '약 300MB', sizeBytes: 300 * 1048576, asrLabel: 'tiny-en' },
 };
-const APP_VERSION = 'v10';
+const APP_VERSION = 'v11';
 const TARGET_LANG = { 'ko-en': 'en-US', 'en-ko': 'ko-KR' };
 
 const $ = (id) => document.getElementById(id);
@@ -43,7 +43,7 @@ const els = {
   modeTranslateBtn: $('modeTranslateBtn'), modeDictateBtn: $('modeDictateBtn'),
   recognizedLabel: $('recognizedLabel'),
   translateBtn: $('translateBtn'), listening: $('listening'),
-  listeningText: $('listeningText'), stopListenBtn: $('stopListenBtn'),
+  listeningText: $('listeningText'), sendBtn: $('sendBtn'),
   micHint: $('micHint'),
   recognizedWrap: $('recognizedWrap'), recognizedText: $('recognizedText'),
   retranslateBtn: $('retranslateBtn'),
@@ -135,8 +135,8 @@ function setMode(next) {
     ? '받아쓴 글자 — 말할 때마다 이어붙습니다. 틀린 부분은 고치세요'
     : '인식된 글자 — 번역이 바로 나옵니다. 틀린 부분은 고치고 "번역하기"를 누르세요';
   els.micHint.textContent = next === 'dictate'
-    ? '마이크: 말하면 0.9초 침묵 뒤 자동으로 인식해서 아래에 이어붙습니다. 그만 들으려면 마이크를 다시 누르세요. (최대 30초)'
-    : '마이크: 말하면 0.9초 침묵 뒤 자동으로 인식합니다. (최대 30초)';
+    ? '마이크: 말하고 보내기를 누르면 아래에 이어붙습니다. 0.9초 침묵 뒤에도 자동으로 인식돼요. (최대 30초)'
+    : '마이크: 말하고 보내기를 누르면 바로 인식합니다. 0.9초 침묵 뒤에도 자동으로 인식돼요. (최대 30초)';
 }
 
 async function ensureModels(dir) {
@@ -290,6 +290,18 @@ async function startCapture(mode) {
         const lang = DIRECTIONS[dirAtSpeech].asrLang;
         const text = await transcribe(m.asr, audio, lang);
         if (!text) return;
+        // 인식 결과가 그 방향의 말이 아니면(예: 한국어 모드인데 한글이 하나도
+        // 없으면) 잘못 들은 거라 번역하면 헛소리가 나온다. 번역하지 않고
+        // 인식된 글자만 보여주고 다시 말하게 한다.
+        const looksRight = dirAtSpeech === 'ko-en' ? /[가-힣]/.test(text) : /[a-zA-Z]/.test(text);
+        if (!looksRight) {
+          if (mode === 'single' && inputMode !== 'dictate') {
+            els.recognizedText.value = text;
+            els.recognizedWrap.hidden = false;
+          }
+          els.micHint.textContent = '잘 안 들렸어요. 다시 말해주세요. (주변 소음이 있으면 조용한 곳에서 해보세요)';
+          return;
+        }
         if (mode === 'single') {
           if (inputMode === 'dictate') {
             // 받아쓰기 모드: 인식된 글자를 이어붙이고 계속 듣는다. 번역은 안 한다.
@@ -322,7 +334,7 @@ async function startCapture(mode) {
     return;
   }
   captureMode = mode;
-  setListeningUI(true, mode === 'conv' ? '대화 모드 — 듣는 중…' : '듣는 중… 말을 마치면 자동으로 인식합니다');
+  setListeningUI(true, mode === 'conv' ? '대화 모드 — 듣는 중… 보내기를 누르면 그 차례를 바로 번역합니다' : '듣는 중… 보내기를 누르면 바로 인식합니다');
 }
 
 function stopCapture() {
@@ -413,13 +425,12 @@ els.convBtn.addEventListener('click', () => {
     startCapture('conv');
   }
 });
-els.stopListenBtn.addEventListener('click', () => {
-  if (convOn) {
-    convOn = false;
-    els.convBtn.classList.remove('active');
-    els.convBtn.textContent = '대화 모드';
+els.sendBtn.addEventListener('click', () => {
+  // 보내기: 지금까지 들은 말을 침묵을 기다리지 않고 바로 인식·번역한다.
+  // 대화 모드에서는 그 차례만 끝내고 계속 듣는다.
+  if (!capture?.flush()) {
+    setListeningUI(true, '아직 들은 말이 없어요. 말하고 보내기를 누르세요');
   }
-  stopCapture();
 });
 els.speakBtn.addEventListener('click', () => speak(els.resultText.textContent));
 els.copyBtn.addEventListener('click', async () => {

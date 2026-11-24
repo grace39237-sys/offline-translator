@@ -37,6 +37,7 @@ export class VoiceCapture {
     this.noiseFrames = 0;
     this.speaking = false;
     this.silenceFrames = 0;
+    this.speechFrames = 0;
     this.utterance = [];
     this.running = true;
   }
@@ -96,12 +97,14 @@ export class VoiceCapture {
     if (isSpeech && !this.speaking) {
       this.speaking = true;
       this.silenceFrames = 0;
+      this.speechFrames = 0;
       this.utterance = [...this.preRoll];
     }
     if (this.speaking) {
       this.utterance.push(...frame);
       if (isSpeech) {
         this.silenceFrames = 0;
+        this.speechFrames++;
       } else if (++this.silenceFrames >= SILENCE_FRAMES_TO_END) {
         this._emit();
         return;
@@ -113,9 +116,22 @@ export class VoiceCapture {
   _emit() {
     // 끝 여유 0.3초는 이미 침묵 프레임에 들어 있다
     const out = new Float32Array(this.utterance);
+    const speechFrames = this.speechFrames;
     this.speaking = false;
     this.silenceFrames = 0;
+    this.speechFrames = 0;
     this.utterance = [];
-    if (out.length > 16000 * 0.4) this.onUtterance(out); // 0.4초 미만은 잡음으로 버린다
+    // 0.4초 미만, 또는 진짜 말(임계값 넘는 프레임)이 0.5초 미만이면 잡음으로 버린다.
+    // 짧은 소음 spikes가 발화로 인식돼서 음성인식이 헛소리를 내는 것을 막는다.
+    if (out.length > 16000 * 0.4 && speechFrames >= 5) this.onUtterance(out);
+  }
+
+  // 보내기 버튼: 지금 듣고 있는 발화를 침묵을 기다리지 않고 바로 넘긴다.
+  // 보낼 말이 없으면 false (계속 듣는다).
+  flush() {
+    if (!this.running || !this.speaking) return false;
+    const hadSpeech = this.speechFrames >= 5 && this.utterance.length > 16000 * 0.4;
+    this._emit();
+    return hadSpeech;
   }
 }
