@@ -29,7 +29,7 @@ const DIRECTIONS = {
   'ko-en': { from: '한국어', to: 'English', asr: ASR_MODEL_KO, asrLang: 'korean', mt: MT_MODEL_KO_EN, size: '약 190MB', sizeBytes: 190 * 1048576, asrLabel: 'base-ko' },
   'en-ko': { from: 'English', to: '한국어', asr: ASR_MODEL_EN, asrLang: 'english', mt: MT_MODEL_EN_KO, size: '약 300MB', sizeBytes: 300 * 1048576, asrLabel: 'tiny-en' },
 };
-const APP_VERSION = 'v9';
+const APP_VERSION = 'v10';
 const TARGET_LANG = { 'ko-en': 'en-US', 'en-ko': 'ko-KR' };
 
 const $ = (id) => document.getElementById(id);
@@ -145,11 +145,21 @@ async function ensureModels(dir) {
   progressFiles.clear();
   progressExpected = d.sizeBytes;
   els.downloadBtn.disabled = true;
-  els.downloadProgress.hidden = false;
-  els.downloadLabel.hidden = false;
-  els.downloadBar.style.width = '0%';
-  els.downloadLabel.textContent = '받는 중…';
-  setStatus('busy', '모델 받는 중…');
+  // 저장된 모델이 있으면 폰 안에서 불러오는 거라 받는 중이 아니다.
+  // "모델 받는 중…"으로 뜨면 새로 받는 것처럼 보이니까, 이 경우엔
+  // 불러오는 중이라고 표시하고 다운로드 진행 막대는 안 보여준다.
+  const fromCache = (await hasCachedModel(d.asr)) && (await hasCachedModel(d.mt));
+  if (fromCache) {
+    els.downloadProgress.hidden = true;
+    els.downloadLabel.hidden = true;
+    setStatus('busy', '저장된 모델 불러오는 중…');
+  } else {
+    els.downloadProgress.hidden = false;
+    els.downloadLabel.hidden = false;
+    els.downloadBar.style.width = '0%';
+    els.downloadLabel.textContent = '받는 중…';
+    setStatus('busy', '모델 받는 중…');
+  }
   try {
     const asr = await loadASR(d.asr, onProgress);
     const mt = await loadMT(d.mt, onProgress);
@@ -160,6 +170,7 @@ async function ensureModels(dir) {
     console.error(e);
     setStatus('off', '모델 받기 실패 — 다시 시도해 주세요');
     els.downloadBtn.disabled = false;
+    els.downloadLabel.hidden = false;
     els.downloadLabel.textContent = `받기 실패: ${e.message}`;
     throw e;
   }
@@ -461,7 +472,6 @@ async function autoLoadSavedModels() {
     els.modelInfo.textContent += ' (폰에 저장된 모델이 없습니다)';
     return;
   }
-  setStatus('busy', '저장된 모델 불러오는 중…');
   try {
     await ensureModels(direction);
   } catch (_) {
