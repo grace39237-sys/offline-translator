@@ -29,8 +29,16 @@ const DIRECTIONS = {
   'ko-en': { from: '한국어', to: 'English', asr: ASR_MODEL_KO, asrLang: 'korean', mt: MT_MODEL_KO_EN, size: '약 190MB', sizeBytes: 190 * 1048576, asrLabel: 'base-ko' },
   'en-ko': { from: 'English', to: '한국어', asr: ASR_MODEL_EN, asrLang: 'english', mt: MT_MODEL_EN_KO, size: '약 300MB', sizeBytes: 300 * 1048576, asrLabel: 'tiny-en' },
 };
-const APP_VERSION = 'v12';
+const APP_VERSION = 'v13';
 const TARGET_LANG = { 'ko-en': 'en-US', 'en-ko': 'ko-KR' };
+
+// 듣기 감도: 마이크가 말을 얼마나 쉽게 듣는지. 상=민감(작은 소리도 듣기,
+// 임계값 = 소음 기준 ×3), 중=보통(×6), 하=둔감(시끄러운 곳에서 잡음 무시, ×10).
+// 기본 중. 선택은 폰에 저장한다.
+const SENSITIVITY = { high: 3, mid: 6, low: 10 };
+let sensitivity = 'mid';
+try { sensitivity = localStorage.getItem('ot-sensitivity') || 'mid'; } catch (_) {}
+if (!SENSITIVITY[sensitivity]) sensitivity = 'mid';
 
 const $ = (id) => document.getElementById(id);
 const els = {
@@ -45,6 +53,7 @@ const els = {
   translateBtn: $('translateBtn'), listening: $('listening'),
   listeningText: $('listeningText'), sendBtn: $('sendBtn'),
   micHint: $('micHint'),
+  sensHighBtn: $('sensHighBtn'), sensMidBtn: $('sensMidBtn'), sensLowBtn: $('sensLowBtn'),
   recognizedWrap: $('recognizedWrap'), recognizedText: $('recognizedText'),
   retranslateBtn: $('retranslateBtn'),
   resultWrap: $('resultWrap'), resultText: $('resultText'), resultSrc: $('resultSrc'),
@@ -283,6 +292,10 @@ async function startCapture(mode) {
   const models = await ensureModels(direction);
   capture = new VoiceCapture({
     onLevel: (l) => setBars(l),
+    sensitivity: SENSITIVITY[sensitivity],
+    // 말이 들리면 화면에 바로 표시한다 — 들었는지 안 들었는지 보이게.
+    onSpeechStart: () => setListeningUI(true, '듣고 있어요…'),
+    onSpeechEnd: () => setListeningUI(true, mode === 'conv' ? '대화 모드 — 듣는 중… 보내기를 누르면 그 차례를 바로 번역합니다' : '듣는 중… 보내기를 누르면 바로 인식합니다'),
     onUtterance: async (audio) => {
       try {
         const dirAtSpeech = direction;
@@ -399,6 +412,24 @@ els.convList.addEventListener('keydown', (e) => {
   }
 });
 
+// ---- 듣기 감도 ----
+function updateSensitivityUI() {
+  els.sensHighBtn.setAttribute('aria-pressed', String(sensitivity === 'high'));
+  els.sensMidBtn.setAttribute('aria-pressed', String(sensitivity === 'mid'));
+  els.sensLowBtn.setAttribute('aria-pressed', String(sensitivity === 'low'));
+}
+function setSensitivity(next) {
+  if (!SENSITIVITY[next]) return;
+  sensitivity = next;
+  try { localStorage.setItem('ot-sensitivity', next); } catch (_) {}
+  updateSensitivityUI();
+  // 듣는 중이면 바로 적용한다.
+  if (capture) capture.sensitivity = SENSITIVITY[next];
+}
+els.sensHighBtn.addEventListener('click', () => setSensitivity('high'));
+els.sensMidBtn.addEventListener('click', () => setSensitivity('mid'));
+els.sensLowBtn.addEventListener('click', () => setSensitivity('low'));
+
 // ---- 버튼 연결 ----
 els.modeTranslateBtn.addEventListener('click', () => setMode('translate'));
 els.modeDictateBtn.addEventListener('click', () => setMode('dictate'));
@@ -494,4 +525,5 @@ window.addEventListener('pagehide', () => stopCapture());
 
 renderHistory();
 updateModelBox();
+updateSensitivityUI();
 autoLoadSavedModels();

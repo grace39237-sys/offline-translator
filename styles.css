@@ -89,6 +89,15 @@ textarea::placeholder { color: #80868B; }
 .mode-switch button + button { border-left: none; }
 .mode-switch button[aria-pressed="true"] { background: #1A73E8; color: #FFFFFF; }
 
+/* 듣기 감도 선택 */
+.sens-row { display: flex; align-items: center; gap: 8px; margin-top: 10px; }
+.sens-row span { font-size: 14px; color: #5F6368; }
+.sens-row button {
+  border: 1px solid #1A73E8; background: #FFFFFF; color: #1A73E8;
+  padding: 6px 14px; min-height: 36px; font-weight: 500; border-radius: 18px;
+}
+.sens-row button[aria-pressed="true"] { background: #1A73E8; color: #FFFFFF; }
+
 /* 버튼 */
 .btn {
   border: 1px solid #DADCE0; background: #FFFFFF; color: #1A73E8;
