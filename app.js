@@ -21,11 +21,15 @@ if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('./sw.js').catch(() => {});
 }
 
+// 저장한 모델을 브라우저가 용량 부족 이유로 지우지 않게 영구 저장소로 요청한다.
+// (안 되면 무시 — 저장 자체는 그대로 동작한다.)
+if (navigator.storage?.persist) navigator.storage.persist().catch(() => {});
+
 const DIRECTIONS = {
   'ko-en': { from: '한국어', to: 'English', asr: ASR_MODEL_KO, asrLang: 'korean', mt: MT_MODEL_KO_EN, size: '약 190MB', sizeBytes: 190 * 1048576, asrLabel: 'base-ko' },
   'en-ko': { from: 'English', to: '한국어', asr: ASR_MODEL_EN, asrLang: 'english', mt: MT_MODEL_EN_KO, size: '약 940MB', sizeBytes: 940 * 1048576, asrLabel: 'tiny-en' },
 };
-const APP_VERSION = 'v4';
+const APP_VERSION = 'v5';
 const TARGET_LANG = { 'ko-en': 'en-US', 'en-ko': 'ko-KR' };
 
 const $ = (id) => document.getElementById(id);
@@ -41,7 +45,7 @@ const els = {
   micHint: $('micHint'),
   recognizedWrap: $('recognizedWrap'), recognizedText: $('recognizedText'),
   retranslateBtn: $('retranslateBtn'),
-  resultWrap: $('resultWrap'), resultText: $('resultText'),
+  resultWrap: $('resultWrap'), resultText: $('resultText'), resultSrc: $('resultSrc'),
   speakBtn: $('speakBtn'), copyBtn: $('copyBtn'),
   convWrap: $('convWrap'), convList: $('convList'), convClearBtn: $('convClearBtn'),
   historyList: $('historyList'), historyEmpty: $('historyEmpty'),
@@ -158,6 +162,8 @@ function renderHistory() {
     li.addEventListener('click', () => {
       els.inputText.value = h.src;
       els.resultText.textContent = h.dst;
+      els.resultSrc.textContent = h.src;
+      els.resultSrc.hidden = false;
       els.resultWrap.hidden = false;
       window.scrollTo({ top: 0, behavior: 'smooth' });
     });
@@ -165,8 +171,11 @@ function renderHistory() {
   }
 }
 
-function showResult(text) {
+function showResult(text, src) {
   els.resultText.textContent = text;
+  // 원문도 결과 카드에 같이 보여준다 (친 문장·말한 문장과 번역문을 한눈에).
+  els.resultSrc.textContent = src || '';
+  els.resultSrc.hidden = !src;
   els.resultWrap.hidden = false;
 }
 
@@ -178,13 +187,13 @@ async function doTranslate(srcText) {
     models = await ensureModels(direction);
   } catch (e) {
     // 모델이 없으면 번역이 안 된다. 조용히 넘어가지 말고 알려준다.
-    showResult('모델을 먼저 받아야 합니다. 위의 "모델 받기" 버튼을 눌러 주세요.');
+    showResult('모델을 먼저 받아야 합니다. 위의 "모델 받기" 버튼을 눌러 주세요.', '');
     return null;
   }
   setStatus('busy', '번역 중…');
   try {
     const dst = await translate(models.mt, src, direction);
-    showResult(dst);
+    showResult(dst, src);
     saveHistory(src, dst);
     setStatus('ready', '오프라인 준비 완료');
     return dst;
@@ -387,7 +396,35 @@ els.convClearBtn.addEventListener('click', () => {
   els.convWrap.hidden = true;
 });
 
+// ---- 저장된 모델 자동 불러오기 ----
+// transformers.js는 모델 파일을 브라우저 저장소(Cache Storage의
+// 'transformers-cache')에 둔다. 앱을 새로 열 때마다 "모델 받기"를
+// 다시 누르게 하지 않고, 저장된 모델이 있으면 알아서 불러온다.
+// (저장된 게 없으면 조용히 넘어가고 버튼이 그대로 보인다.)
+async function hasCachedModel(modelId) {
+  try {
+    const cache = await caches.open('transformers-cache');
+    const keys = await cache.keys();
+    return keys.some((r) => r.url.includes(modelId));
+  } catch (_) {
+    return false;
+  }
+}
+
+async function autoLoadSavedModels() {
+  const d = DIRECTIONS[direction];
+  const saved = (await hasCachedModel(d.asr)) && (await hasCachedModel(d.mt));
+  if (!saved) return;
+  setStatus('busy', '저장된 모델 불러오는 중…');
+  try {
+    await ensureModels(direction);
+  } catch (_) {
+    // 저장소가 비었거나 깨졌으면 버튼 표시로 폴백 (ensureModels가 처리).
+  }
+}
+
 window.addEventListener('pagehide', () => stopCapture());
 
 renderHistory();
 updateModelBox();
+autoLoadSavedModels();

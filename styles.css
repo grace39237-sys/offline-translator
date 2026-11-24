@@ -74,6 +74,7 @@ textarea::placeholder { color: #80868B; }
 .card.result { background: #E8F0FE; border-color: #E8F0FE; }
 .card-label { display: block; font-size: 13px; color: #5F6368; margin-bottom: 6px; }
 .result-text { font-size: 22px; font-weight: 500; margin: 0 0 12px; line-height: 1.4; word-break: keep-all; overflow-wrap: anywhere; }
+.result-src { font-size: 14px; color: #5F6368; margin: 0 0 8px; line-height: 1.4; word-break: keep-all; overflow-wrap: anywhere; }
 .card-actions { display: flex; align-items: center; gap: 8px; margin-top: 10px; }
 .hint { font-size: 13px; color: #5F6368; margin: 8px 0 0; }
 
