@@ -62,11 +62,12 @@
     <p id="micHint" class="hint">마이크: 말하고 보내기를 누르면 바로 인식합니다. 0.9초 침묵 뒤에도 자동으로 인식돼요. (최대 30초)</p>
     <div class="sens-row" role="group" aria-label="듣기 감도">
       <span>듣기 감도</span>
-      <button id="sensHighBtn" type="button" aria-pressed="false">상</button>
-      <button id="sensMidBtn" type="button" aria-pressed="true">중</button>
-      <button id="sensLowBtn" type="button" aria-pressed="false">하</button>
+      <!-- 표시는 소음 정도(낮게=조용한 곳, 높게=시끄러운 곳). 낮게가 제일 민감하게 듣는다. -->
+      <button id="sensHighBtn" type="button" aria-pressed="false">낮게</button>
+      <button id="sensMidBtn" type="button" aria-pressed="true">보통</button>
+      <button id="sensLowBtn" type="button" aria-pressed="false">높게</button>
     </div>
-    <p class="hint">말이 잘 안 들리면 '상', 잡음이 자꾸 잡히면 '하'로 바꿔보세요. 감도를 올리면 보이스 강화도 함께 세집니다.</p>
+    <p class="hint">조용한 곳은 낮게, 시끄러운 곳은 높게로 맞추세요.</p>
   </section>
 
   <!-- 결과 카드 -->

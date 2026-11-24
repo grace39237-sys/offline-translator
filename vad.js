@@ -16,9 +16,9 @@ const QUIET_ENERGY = 0.0002; // 이보다 큰 프레임은 말이 섞인 것으�
 const NOISE_FRAMES_NEEDED = 10; // 조용한 프레임 10개(1초)로 기준을 잡는다
 const NOISE_WAIT_MAX_FRAMES = 30; // 3초 안에 안 모이면 모은 것으로 기준을 잡는다
 
-// EQ 강도: 감도(상/중/하)에 맞춰 함께 바꾼다. 상이 보이스를 제일 세게 올린다.
-// 상: 저음 120Hz부터 자르고 말소리 대역(2.5kHz) +6dB
-// 중: 저음 100Hz부터 자르고 +3dB / 하: 저음 80Hz부터 자르고 +0dB
+// EQ 강도: 감도에 맞춰 함께 바꾼다. 낮게(제일 민감)가 보이스를 제일 세게 올린다.
+// 낮게: 저음 120Hz부터 자르고 말소리 대역(2.5kHz) +6dB
+// 보통: 저음 100Hz부터 자르고 +3dB / 높게: 저음 80Hz부터 자르고 +0dB
 export function eqProfileForSensitivity(sensitivity) {
   if (sensitivity <= 3) return { hp: 120, peakGain: 6 };
   if (sensitivity >= 10) return { hp: 80, peakGain: 0 };
@@ -32,7 +32,7 @@ export class VoiceCapture {
     this.onSpeechStart = onSpeechStart || (() => {});
     this.onSpeechEnd = onSpeechEnd || (() => {});
     // 감도: 임계값 = 소음 기준 × 감도. 작을수록 작은 소리도 듣는다.
-    // 상(민감) 3 / 중(보통) 6 / 하(둔감) 10.
+    // 낮게(민감) 3 / 보통 6 / 높게(둔감) 10.
     this.sensitivity = sensitivity || 6;
     this.running = false;
   }

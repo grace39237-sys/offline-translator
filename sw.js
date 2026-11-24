@@ -1,7 +1,7 @@
 // sw.js — 앱 껍데기(HTML/CSS/JS/벤더 파일)를 캐시해서 오프라인에서 연다.
 // 모델 파일은 Hugging Face에서 받으며 transformers.js가 브라우저 캐시에
 // 따로 저장하므로 서비스 워커가 가로채지 않는다.
-const CACHE = 'offline-translator-v14';
+const CACHE = 'offline-translator-v15';
 const SHELL = [
   './',
   './index.html',
