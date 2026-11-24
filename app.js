@@ -22,9 +22,10 @@ if ('serviceWorker' in navigator) {
 }
 
 const DIRECTIONS = {
-  'ko-en': { from: '한국어', to: 'English', asr: ASR_MODEL_KO, asrLang: 'korean', mt: MT_MODEL_KO_EN, size: '약 190MB', sizeBytes: 190 * 1048576 },
-  'en-ko': { from: 'English', to: '한국어', asr: ASR_MODEL_EN, asrLang: 'english', mt: MT_MODEL_EN_KO, size: '약 940MB', sizeBytes: 940 * 1048576 },
+  'ko-en': { from: '한국어', to: 'English', asr: ASR_MODEL_KO, asrLang: 'korean', mt: MT_MODEL_KO_EN, size: '약 190MB', sizeBytes: 190 * 1048576, asrLabel: 'base-ko' },
+  'en-ko': { from: 'English', to: '한국어', asr: ASR_MODEL_EN, asrLang: 'english', mt: MT_MODEL_EN_KO, size: '약 940MB', sizeBytes: 940 * 1048576, asrLabel: 'tiny-en' },
 };
+const APP_VERSION = 'v4';
 const TARGET_LANG = { 'ko-en': 'en-US', 'en-ko': 'ko-KR' };
 
 const $ = (id) => document.getElementById(id);
@@ -44,6 +45,7 @@ const els = {
   speakBtn: $('speakBtn'), copyBtn: $('copyBtn'),
   convWrap: $('convWrap'), convList: $('convList'), convClearBtn: $('convClearBtn'),
   historyList: $('historyList'), historyEmpty: $('historyEmpty'),
+  modelLine: $('modelLine'),
 };
 
 let direction = 'ko-en';
@@ -86,6 +88,8 @@ function updateModelBox() {
   const d = DIRECTIONS[direction];
   els.langFrom.textContent = d.from;
   els.langTo.textContent = d.to;
+  // 화면 아래에 쓰는 버전·모델 표시: 폰에 새 버전이 올라왔는지 확인용.
+  if (els.modelLine) els.modelLine.textContent = `음성인식: ${d.asrLabel} · 앱 ${APP_VERSION}`;
   if (loaded[direction]) {
     els.modelBox.hidden = true;
     setStatus('ready', '오프라인 준비 완료');
@@ -243,7 +247,9 @@ async function startCapture(mode) {
           stopCapture();
           els.recognizedText.value = text;
           els.recognizedWrap.hidden = false;
-          els.recognizedText.focus();
+          // 인식된 글자를 보여주면서 바로 번역도 한다.
+          // (틀렸으면 고치고 아래 "번역하기"를 누르면 다시 번역된다.)
+          doTranslate(text);
         } else {
           addConvTurn(text, dirAtSpeech);
         }

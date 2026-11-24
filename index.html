@@ -60,7 +60,7 @@
 
   <!-- 인식 결과 (고칠 수 있음) -->
   <section id="recognizedWrap" class="card" hidden>
-    <label class="card-label" for="recognizedText">인식된 글자 — 틀린 부분은 고치고 번역하기를 누르세요</label>
+    <label class="card-label" for="recognizedText">인식된 글자 — 번역이 바로 나옵니다. 틀린 부분은 고치고 "번역하기"를 누르세요</label>
     <textarea id="recognizedText" rows="3" aria-label="인식된 글자"></textarea>
     <div class="card-actions">
       <button id="retranslateBtn" class="btn primary" type="button">번역하기</button>
@@ -97,6 +97,7 @@
     <ul id="historyList" class="history-list"></ul>
     <p id="historyEmpty" class="hint">아직 번역 기록이 없습니다. 기록은 이 폰에만 저장됩니다.</p>
   </section>
+  <p id="modelLine" class="hint"></p>
 </main>
 
 <script type="module" src="./app.js"></script>
