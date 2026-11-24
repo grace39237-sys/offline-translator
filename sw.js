@@ -1,7 +1,7 @@
 // sw.js — 앱 껍데기(HTML/CSS/JS/벤더 파일)를 캐시해서 오프라인에서 연다.
 // 모델 파일은 Hugging Face에서 받으며 transformers.js가 브라우저 캐시에
 // 따로 저장하므로 서비스 워커가 가로채지 않는다.
-const CACHE = 'offline-translator-v6';
+const CACHE = 'offline-translator-v7';
 const SHELL = [
   './',
   './index.html',
@@ -30,8 +30,19 @@ self.addEventListener('install', (e) => {
 
 self.addEventListener('activate', (e) => {
   e.waitUntil(
-    caches.keys()
-      .then((keys) => Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k))))
+    caches
+      .keys()
+      // 이 앱의 셸 캐시(old 버전)만 지운다. transformers.js가 모델을
+      // 저장하는 'transformers-cache'는 절대 지우지 않는다 — v6까지는
+      // 이름이 다른 캐시를 전부 지워서, 저장된 모델이 SW 활성화 때마다
+      // 날아가고 매번 다시 받아야 했다.
+      .then((keys) =>
+        Promise.all(
+          keys
+            .filter((k) => k.startsWith('offline-translator-') && k !== CACHE)
+            .map((k) => caches.delete(k)),
+        ),
+      )
       .then(() => self.clients.claim()),
   );
 });
