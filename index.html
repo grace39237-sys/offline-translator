@@ -62,15 +62,6 @@
     <p id="micHint" class="hint">마이크: 말하면 0.9초 침묵 뒤 자동으로 인식합니다. (최대 30초)</p>
   </section>
 
-  <!-- 인식 결과 (고칠 수 있음) -->
-  <section id="recognizedWrap" class="card" hidden>
-    <label id="recognizedLabel" class="card-label" for="recognizedText">인식된 글자 — 번역이 바로 나옵니다. 틀린 부분은 고치고 "번역하기"를 누르세요</label>
-    <textarea id="recognizedText" rows="3" aria-label="인식된 글자"></textarea>
-    <div class="card-actions">
-      <button id="retranslateBtn" class="btn primary" type="button">번역하기</button>
-    </div>
-  </section>
-
   <!-- 결과 카드 -->
   <section id="resultWrap" class="card result" hidden>
     <p id="resultSrc" class="result-src" hidden></p>
@@ -87,6 +78,15 @@
     </div>
   </section>
 
+  <!-- 인식 결과 (고칠 수 있음) -->
+  <section id="recognizedWrap" class="card" hidden>
+    <label id="recognizedLabel" class="card-label" for="recognizedText">인식된 글자 — 번역이 바로 나옵니다. 틀린 부분은 고치고 "번역하기"를 누르세요</label>
+    <textarea id="recognizedText" rows="3" aria-label="인식된 글자"></textarea>
+    <div class="card-actions">
+      <button id="retranslateBtn" class="btn primary" type="button">번역하기</button>
+    </div>
+  </section>
+
   <!-- 대화 기록 -->
   <section id="convWrap" hidden>
     <div class="section-head">
@@ -98,7 +98,10 @@
 
   <!-- 최근 번역 기록 -->
   <section>
-    <h2>최근 번역</h2>
+    <div class="section-head">
+      <h2>최근 번역</h2>
+      <button id="historyClearBtn" class="btn small" type="button">기록 지우기</button>
+    </div>
     <ul id="historyList" class="history-list"></ul>
     <p id="historyEmpty" class="hint">아직 번역 기록이 없습니다. 기록은 이 폰에만 저장됩니다.</p>
   </section>
