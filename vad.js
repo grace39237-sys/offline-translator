@@ -16,6 +16,15 @@ const QUIET_ENERGY = 0.0002; // 이보다 큰 프레임은 말이 섞인 것으�
 const NOISE_FRAMES_NEEDED = 10; // 조용한 프레임 10개(1초)로 기준을 잡는다
 const NOISE_WAIT_MAX_FRAMES = 30; // 3초 안에 안 모이면 모은 것으로 기준을 잡는다
 
+// EQ 강도: 감도(상/중/하)에 맞춰 함께 바꾼다. 상이 보이스를 제일 세게 올린다.
+// 상: 저음 120Hz부터 자르고 말소리 대역(2.5kHz) +6dB
+// 중: 저음 100Hz부터 자르고 +3dB / 하: 저음 80Hz부터 자르고 +0dB
+export function eqProfileForSensitivity(sensitivity) {
+  if (sensitivity <= 3) return { hp: 120, peakGain: 6 };
+  if (sensitivity >= 10) return { hp: 80, peakGain: 0 };
+  return { hp: 100, peakGain: 3 };
+}
+
 export class VoiceCapture {
   constructor({ onUtterance, onLevel, onSpeechStart, onSpeechEnd, sensitivity }) {
     this.onUtterance = onUtterance;
@@ -37,8 +46,21 @@ export class VoiceCapture {
     this.ctx = new AudioContext();
     await this.ctx.audioWorklet.addModule('./vad-processor.js');
     const src = this.ctx.createMediaStreamSource(stream);
+    // EQ: 인식기에 들어가기 전에 보이스를 강화한다. 저음 웅웅거림을 자르고
+    // 말소리가 제일 선명한 대역(2.5kHz)을 올린다. 강도는 감도(상/중/하)와 함께 간다.
+    const eq = eqProfileForSensitivity(this.sensitivity);
+    this.hpFilter = this.ctx.createBiquadFilter();
+    this.hpFilter.type = 'highpass';
+    this.hpFilter.frequency.value = eq.hp;
+    this.peakFilter = this.ctx.createBiquadFilter();
+    this.peakFilter.type = 'peaking';
+    this.peakFilter.frequency.value = 2500;
+    this.peakFilter.Q.value = 1;
+    this.peakFilter.gain.value = eq.peakGain;
     this.node = new AudioWorkletNode(this.ctx, 'vad-processor');
-    src.connect(this.node);
+    src.connect(this.hpFilter);
+    this.hpFilter.connect(this.peakFilter);
+    this.peakFilter.connect(this.node);
     this.node.port.onmessage = (e) => this._onChunk(e.data.data);
     this.sampleRate = this.ctx.sampleRate;
     this.resampleStep = this.sampleRate / 16000;
@@ -58,12 +80,22 @@ export class VoiceCapture {
     this.running = true;
   }
 
+  // 감도를 바꾸면 임계값 배수와 EQ 강도를 함께 바꾼다 (듣는 중에도 바로 적용).
+  setSensitivity(mult) {
+    this.sensitivity = mult;
+    const eq = eqProfileForSensitivity(mult);
+    if (this.hpFilter) this.hpFilter.frequency.value = eq.hp;
+    if (this.peakFilter) this.peakFilter.gain.value = eq.peakGain;
+  }
+
   stop() {
     this.running = false;
     try { this.node?.disconnect(); } catch (_) {}
     try { this.stream?.getTracks().forEach((t) => t.stop()); } catch (_) {}
     if (this.ctx) this.ctx.close().catch(() => {});
     this.node = null;
+    this.hpFilter = null;
+    this.peakFilter = null;
     this.ctx = null;
   }
 

@@ -29,7 +29,7 @@ const DIRECTIONS = {
   'ko-en': { from: '한국어', to: 'English', asr: ASR_MODEL_KO, asrLang: 'korean', mt: MT_MODEL_KO_EN, size: '약 190MB', sizeBytes: 190 * 1048576, asrLabel: 'base-ko' },
   'en-ko': { from: 'English', to: '한국어', asr: ASR_MODEL_EN, asrLang: 'english', mt: MT_MODEL_EN_KO, size: '약 300MB', sizeBytes: 300 * 1048576, asrLabel: 'tiny-en' },
 };
-const APP_VERSION = 'v13';
+const APP_VERSION = 'v14';
 const TARGET_LANG = { 'ko-en': 'en-US', 'en-ko': 'ko-KR' };
 
 // 듣기 감도: 마이크가 말을 얼마나 쉽게 듣는지. 상=민감(작은 소리도 듣기,
@@ -423,8 +423,8 @@ function setSensitivity(next) {
   sensitivity = next;
   try { localStorage.setItem('ot-sensitivity', next); } catch (_) {}
   updateSensitivityUI();
-  // 듣는 중이면 바로 적용한다.
-  if (capture) capture.sensitivity = SENSITIVITY[next];
+  // 듣는 중이면 임계값과 EQ 강도를 바로 함께 바꾼다.
+  if (capture) capture.setSensitivity(SENSITIVITY[next]);
 }
 els.sensHighBtn.addEventListener('click', () => setSensitivity('high'));
 els.sensMidBtn.addEventListener('click', () => setSensitivity('mid'));
