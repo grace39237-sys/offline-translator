@@ -108,11 +108,14 @@ textarea::placeholder { color: #80868B; }
 .btn.small { min-height: 36px; padding: 6px 12px; font-size: 13px; }
 .btn.active { background: #E8F0FE; border-color: #1A73E8; }
 .mic-btn {
-  width: 56px; height: 56px; border-radius: 50%; flex: none;
+  width: 68px; height: 68px; border-radius: 50%; flex: none;
   border: none; background: #1A73E8; color: #FFFFFF;
   display: inline-flex; align-items: center; justify-content: center;
+  touch-action: none; -webkit-touch-callout: none;
+  user-select: none; -webkit-user-select: none;
 }
 .mic-btn.recording { background: #D93025; }
+.mic-btn.holding { background: #D93025; transform: scale(0.94); }
 
 /* 듣는 중 표시 */
 .listening { display: flex; align-items: center; gap: 10px; margin-top: 12px; padding-top: 12px; border-top: 1px solid #DADCE0; }

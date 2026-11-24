@@ -29,7 +29,7 @@ export function eqProfileForSensitivity(sensitivity) {
 }
 
 export class VoiceCapture {
-  constructor({ onUtterance, onLevel, onSpeechStart, onSpeechEnd, sensitivity }) {
+  constructor({ onUtterance, onLevel, onSpeechStart, onSpeechEnd, sensitivity, ptt }) {
     this.onUtterance = onUtterance;
     this.onLevel = onLevel || (() => {});
     this.onSpeechStart = onSpeechStart || (() => {});
@@ -37,6 +37,9 @@ export class VoiceCapture {
     // 감도: 임계값 = 소음 기준 × 감도. 작을수록 작은 소리도 듣는다.
     // 낮게(민감) 3 / 보통 6 / 높게(둔감) 10.
     this.sensitivity = sensitivity || 6;
+    // ptt (누를 때만): 버튼을 누른 채로만 녹음한다. 소음 기준을 재지 않고
+    // 침묵으로 자동 종료하지도 않는다 — 떼면 flush()로 바로 넘긴다.
+    this.ptt = !!ptt;
     this.running = false;
   }
 
@@ -70,6 +73,9 @@ export class VoiceCapture {
     this.preRoll = [];
     this.frames = [];
     this.noiseFloor = null;
+    // 누를 때만 모드: 소음 기준을 재지 않는다 (임계값을 안 쓰니까).
+    // 첫 프레임부터 바로 말을 받는다.
+    if (this.ptt) this.noiseFloor = QUIET_ENERGY;
     this.noiseSum = 0;
     this.noiseFrames = 0;
     this.noiseMin = Infinity;
@@ -148,7 +154,9 @@ export class VoiceCapture {
       return;
     }
     const threshold = Math.max(this.noiseFloor * this.sensitivity, 0.0002);
-    const isSpeech = energy > threshold;
+    // 누를 때만 모드에서는 모든 프레임을 말로 본다. 침묵이어도 녹음은
+    // 계속되고, 떼기 전까지는 자동 종료가 안 된다.
+    const isSpeech = this.ptt ? true : energy > threshold;
     if (!isSpeech && !this.speaking) {
       // 조용할 때 소음 기준을 천천히 따라간다
       this.noiseFloor = this.noiseFloor * 0.98 + energy * 0.02;

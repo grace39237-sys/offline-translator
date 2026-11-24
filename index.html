@@ -45,10 +45,14 @@
       <button id="modeTranslateBtn" type="button" aria-pressed="true">번역</button>
       <button id="modeDictateBtn" type="button" aria-pressed="false">받아쓰기</button>
     </div>
+    <div class="mode-switch" role="group" aria-label="듣기 방식">
+      <button id="listenAutoBtn" type="button" aria-pressed="true">자동</button>
+      <button id="listenPttBtn" type="button" aria-pressed="false">누를 때만</button>
+    </div>
     <textarea id="inputText" rows="3" placeholder="번역할 텍스트 입력" aria-label="번역할 텍스트 입력"></textarea>
     <div class="card-actions">
       <button id="micBtn" class="mic-btn" type="button" aria-label="마이크로 말하기" disabled>
-        <svg viewBox="0 0 24 24" width="26" height="26" aria-hidden="true"><path fill="currentColor" d="M12 15a3.5 3.5 0 0 0 3.5-3.5v-6a3.5 3.5 0 1 0-7 0v6A3.5 3.5 0 0 0 12 15zm6-3.5a6 6 0 0 1-12 0H4a8 8 0 0 0 7 7.94V22h2v-2.06a8 8 0 0 0 7-7.94h-2z"/></svg>
+        <svg viewBox="0 0 24 24" width="30" height="30" aria-hidden="true"><path fill="currentColor" d="M12 15a3.5 3.5 0 0 0 3.5-3.5v-6a3.5 3.5 0 1 0-7 0v6A3.5 3.5 0 0 0 12 15zm6-3.5a6 6 0 0 1-12 0H4a8 8 0 0 0 7 7.94V22h2v-2.06a8 8 0 0 0 7-7.94h-2z"/></svg>
       </button>
       <button id="convBtn" class="btn" type="button" disabled>대화 모드</button>
       <button id="translateBtn" class="btn primary" type="button">번역하기</button>

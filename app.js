@@ -29,7 +29,7 @@ const DIRECTIONS = {
   'ko-en': { from: '한국어', to: 'English', asr: ASR_MODEL_KO, asrLang: 'korean', mt: MT_MODEL_KO_EN, size: '약 190MB', sizeBytes: 190 * 1048576, asrLabel: 'base-ko' },
   'en-ko': { from: 'English', to: '한국어', asr: ASR_MODEL_EN, asrLang: 'english', mt: MT_MODEL_EN_KO, size: '약 300MB', sizeBytes: 300 * 1048576, asrLabel: 'tiny-en' },
 };
-const APP_VERSION = 'v17';
+const APP_VERSION = 'v18';
 const TARGET_LANG = { 'ko-en': 'en-US', 'en-ko': 'ko-KR' };
 
 // 듣기 감도: 마이크가 말을 얼마나 쉽게 듣는지. 화면 표시는 소음 정도다:
@@ -41,6 +41,12 @@ let sensitivity = 'mid';
 try { sensitivity = localStorage.getItem('ot-sensitivity') || 'mid'; } catch (_) {}
 if (!SENSITIVITY[sensitivity]) sensitivity = 'mid';
 
+// 듣기 방식: 'auto' (말 끝나면 0.9초 침묵 뒤 자동 인식) / 'ptt' (버튼을
+// 누른 채로만 녹음, 떼면 바로 인식). 선택은 폰에 저장한다.
+let listenMode = 'auto';
+try { listenMode = localStorage.getItem('ot-listen-mode') || 'auto'; } catch (_) {}
+if (listenMode !== 'ptt') listenMode = 'auto';
+
 const $ = (id) => document.getElementById(id);
 const els = {
   statusDot: $('statusDot'), statusText: $('statusText'),
@@ -50,6 +56,7 @@ const els = {
   downloadBar: $('downloadBar'), downloadLabel: $('downloadLabel'),
   inputText: $('inputText'), micBtn: $('micBtn'), convBtn: $('convBtn'),
   modeTranslateBtn: $('modeTranslateBtn'), modeDictateBtn: $('modeDictateBtn'),
+  listenAutoBtn: $('listenAutoBtn'), listenPttBtn: $('listenPttBtn'),
   recognizedLabel: $('recognizedLabel'),
   translateBtn: $('translateBtn'), listening: $('listening'),
   listeningText: $('listeningText'), sendBtn: $('sendBtn'),
@@ -356,6 +363,8 @@ async function startCapture(mode) {
   capture = new VoiceCapture({
     onLevel: (l) => setBars(l),
     sensitivity: SENSITIVITY[sensitivity],
+    // 누를 때만 모드에서는 버튼을 누른 채로만 녹음한다 (대화 모드는 자동 그대로).
+    ptt: mode === 'single' && listenMode === 'ptt',
     // 말이 들리면 화면에 바로 표시한다 — 들었는지 안 들었는지 보이게.
     onSpeechStart: () => setListeningUI(true, '듣고 있어요…'),
     onSpeechEnd: () => setListeningUI(true, mode === 'conv' ? '대화 모드 — 듣는 중… 보내기를 누르면 그 차례를 바로 번역합니다' : '듣는 중… 보내기를 누르면 바로 인식합니다'),
@@ -462,6 +471,26 @@ function setSensitivity(next) {
   // 듣는 중이면 임계값과 EQ 강도를 바로 함께 바꾼다.
   if (capture) capture.setSensitivity(SENSITIVITY[next]);
 }
+
+// ---- 듣기 방식 (자동 / 누를 때만) ----
+const LISTEN_HINT = {
+  auto: '마이크: 말하고 보내기를 누르면 바로 인식합니다. 0.9초 침묵 뒤에도 자동으로 인식돼요. (최대 30초)',
+  ptt: '마이크: 버튼을 누른 채로 말하고, 떼면 바로 인식합니다. (최대 30초)',
+};
+function updateListenModeUI() {
+  els.listenAutoBtn.setAttribute('aria-pressed', String(listenMode === 'auto'));
+  els.listenPttBtn.setAttribute('aria-pressed', String(listenMode === 'ptt'));
+  els.micHint.textContent = LISTEN_HINT[listenMode];
+}
+function setListenMode(next) {
+  if (next !== 'auto' && next !== 'ptt') return;
+  if (listenMode === next) return;
+  listenMode = next;
+  try { localStorage.setItem('ot-listen-mode', next); } catch (_) {}
+  // 듣는 중에 방식을 바꾸면 헷갈리니까 녹음을 끝낸다.
+  if (capture) stopCapture();
+  updateListenModeUI();
+}
 els.sensHighBtn.addEventListener('click', () => setSensitivity('high'));
 els.sensMidBtn.addEventListener('click', () => setSensitivity('mid'));
 els.sensLowBtn.addEventListener('click', () => setSensitivity('low'));
@@ -477,9 +506,38 @@ els.swapBtn.addEventListener('click', () => {
 els.translateBtn.addEventListener('click', () => doTranslate());
 els.retranslateBtn.addEventListener('click', () => doTranslate(els.recognizedText.value));
 els.micBtn.addEventListener('click', () => {
+  // 누를 때만 모드에서는 클릭이 아니라 누르고 있기(pointer)로 동작한다.
+  // (pointerup 뒤에 따라오는 click이 마이크를 다시 켜는 것을 막는다.)
+  if (listenMode === 'ptt') return;
   if (capture) { stopCapture(); return; }
   startCapture('single');
 });
+// 누를 때만 모드: 누르고 있는 동안만 녹음, 떼면 바로 인식한다.
+els.micBtn.addEventListener('pointerdown', (e) => {
+  if (listenMode !== 'ptt') return;
+  e.preventDefault();
+  if (capture) return;
+  els.micBtn.classList.add('holding');
+  startCapture('single');
+});
+function endPtt() {
+  els.micBtn.classList.remove('holding');
+  if (!capture) return;
+  const wasProcessing = processing;
+  const had = capture.flush();
+  // 떼면 녹음은 끝. 인식이 대기 중이면 마이크는 지금 끈다.
+  if (had && wasProcessing) stopCapture();
+  if (!had) {
+    stopCapture();
+    els.micHint.textContent = '너무 짧아요. 버튼을 누른 채로 말해주세요.';
+  }
+}
+els.micBtn.addEventListener('pointerup', () => { if (listenMode === 'ptt') endPtt(); });
+els.micBtn.addEventListener('pointercancel', () => { if (listenMode === 'ptt') endPtt(); });
+els.micBtn.addEventListener('pointerleave', () => { if (listenMode === 'ptt') endPtt(); });
+els.micBtn.addEventListener('contextmenu', (e) => e.preventDefault());
+els.listenAutoBtn.addEventListener('click', () => setListenMode('auto'));
+els.listenPttBtn.addEventListener('click', () => setListenMode('ptt'));
 els.convBtn.addEventListener('click', () => {
   if (convOn) {
     convOn = false;
@@ -567,4 +625,5 @@ window.addEventListener('pagehide', () => stopCapture());
 renderHistory();
 updateModelBox();
 updateSensitivityUI();
+updateListenModeUI();
 autoLoadSavedModels();
