@@ -22,7 +22,7 @@ if ('serviceWorker' in navigator) {
 }
 
 const DIRECTIONS = {
-  'ko-en': { from: '한국어', to: 'English', asr: ASR_MODEL_KO, asrLang: 'korean', mt: MT_MODEL_KO_EN, size: '약 155MB', sizeBytes: 155 * 1048576 },
+  'ko-en': { from: '한국어', to: 'English', asr: ASR_MODEL_KO, asrLang: 'korean', mt: MT_MODEL_KO_EN, size: '약 190MB', sizeBytes: 190 * 1048576 },
   'en-ko': { from: 'English', to: '한국어', asr: ASR_MODEL_EN, asrLang: 'english', mt: MT_MODEL_EN_KO, size: '약 940MB', sizeBytes: 940 * 1048576 },
 };
 const TARGET_LANG = { 'ko-en': 'en-US', 'en-ko': 'ko-KR' };

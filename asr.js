@@ -14,8 +14,9 @@ import {
 } from './vendor/transformers.web.min.js';
 
 // 한국어 모델을 바꾸려면 이 상수 하나만 바꾸면 된다.
-// tiny-ko (기본값, ~32MB) / base-ko (~67MB, Node 테스트에서 한국어 완벽 인식)
-export const ASR_MODEL_KO = 'onnx-community/moonshine-tiny-ko-ONNX';
+// base-ko (기본값, ~67MB, Node 테스트에서 한국어 완벽 인식)
+// tiny-ko (~32MB)는 실폰 테스트에서 인식률이 너무 안 좋다고 보고됨 (2026-11-24).
+export const ASR_MODEL_KO = 'onnx-community/moonshine-base-ko-ONNX';
 export const ASR_MODEL_EN = 'onnx-community/moonshine-tiny-ONNX';
 
 // 초당 최대 생성 토큰: 논문 휴리스틱 6/s는 한국어에 너무 적다.
