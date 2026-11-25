@@ -13,6 +13,9 @@ const MAX_UTTERANCE_SEC = 30; // 한 발화 최대 30초
 // (처음 1초에 말이 섞이면 기준이 말 소리만큼 부풀어서 그 뒤 말이
 // 임계값을 못 넘고 앱이 귀머거리가 된다 — 2026-11-24 실폰 보고.)
 const QUIET_ENERGY = 0.0002; // 이보다 큰 프레임은 말이 섞인 것으로 보고 제외
+const MIN_THRESHOLD = 0.0001; // 임계값 하한. 조용한 곳에서 소음 기준이
+// 낮아져도 이 아래로는 안 내려간다 — 이보다 작은 목소리는 인식이 못 듣는다
+// (2026-11-25 실폰 보고: 조용한 곳에서도 인식이 비어 나옴).
 const NOISE_FRAMES_NEEDED = 10; // 조용한 프레임 10개(1초)로 기준을 잡는다
 const NOISE_WAIT_MAX_FRAMES = 30; // 3초 안에 안 모이면 모은 것으로 기준을 잡는다
 
@@ -23,8 +26,8 @@ const NOISE_WAIT_MAX_FRAMES = 30; // 3초 안에 안 모이면 모은 것으로 
 //   선명하게 한다. 시끄러운 곳에서 올리면 잡음까지 커져서 안 된다.
 //   낮게 +6dB / 보통 +3dB / 높게 +0dB.
 export function eqProfileForSensitivity(sensitivity) {
-  if (sensitivity <= 3) return { hp: 80, peakGain: 6 };
-  if (sensitivity >= 10) return { hp: 200, peakGain: 0 };
+  if (sensitivity <= 2) return { hp: 80, peakGain: 6 };
+  if (sensitivity >= 7) return { hp: 200, peakGain: 0 };
   return { hp: 120, peakGain: 3 };
 }
 
@@ -35,7 +38,7 @@ export class VoiceCapture {
     this.onSpeechStart = onSpeechStart || (() => {});
     this.onSpeechEnd = onSpeechEnd || (() => {});
     // 감도: 임계값 = 소음 기준 × 감도. 작을수록 작은 소리도 듣는다.
-    // 낮게(민감) 3 / 보통 6 / 높게(둔감) 10.
+    // 낮게(민감) 2 / 보통 4 / 높게(둔감) 7.
     this.sensitivity = sensitivity || 6;
     // ptt (누를 때만): 버튼을 누른 채로만 녹음한다. 소음 기준을 재지 않고
     // 침묵으로 자동 종료하지도 않는다 — 떼면 flush()로 바로 넘긴다.
@@ -153,7 +156,7 @@ export class VoiceCapture {
       }
       return;
     }
-    const threshold = Math.max(this.noiseFloor * this.sensitivity, 0.0002);
+    const threshold = Math.max(this.noiseFloor * this.sensitivity, MIN_THRESHOLD);
     // 누를 때만 모드에서는 모든 프레임을 말로 본다. 침묵이어도 녹음은
     // 계속되고, 떼기 전까지는 자동 종료가 안 된다.
     const isSpeech = this.ptt ? true : energy > threshold;

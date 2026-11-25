@@ -41,13 +41,10 @@
 
   <!-- 입력 카드 -->
   <section class="card">
-    <div class="mode-switch" role="group" aria-label="사용 모드">
-      <button id="modeTranslateBtn" type="button" aria-pressed="true">번역</button>
-      <button id="modeDictateBtn" type="button" aria-pressed="false">받아쓰기</button>
-    </div>
-    <div class="mode-switch" role="group" aria-label="듣기 방식">
-      <button id="listenAutoBtn" type="button" aria-pressed="true">자동</button>
-      <button id="listenPttBtn" type="button" aria-pressed="false">누를 때만</button>
+    <!-- 모드 버튼은 2개만 있다 — 각 버튼에 지금 모드만 보이고, 누르면 바뀐다. -->
+    <div class="mode-switch" role="group" aria-label="모드 선택">
+      <button id="inputModeBtn" type="button" aria-label="입력 모드 바꾸기">번역</button>
+      <button id="listenModeBtn" type="button" aria-label="듣기 방식 바꾸기">자동</button>
     </div>
     <textarea id="inputText" rows="3" placeholder="번역할 텍스트 입력" aria-label="번역할 텍스트 입력"></textarea>
     <div class="card-actions">

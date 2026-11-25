@@ -29,14 +29,14 @@ const DIRECTIONS = {
   'ko-en': { from: '한국어', to: 'English', asr: ASR_MODEL_KO, asrLang: 'korean', mt: MT_MODEL_KO_EN, size: '약 190MB', sizeBytes: 190 * 1048576, asrLabel: 'base-ko' },
   'en-ko': { from: 'English', to: '한국어', asr: ASR_MODEL_EN, asrLang: 'english', mt: MT_MODEL_EN_KO, size: '약 300MB', sizeBytes: 300 * 1048576, asrLabel: 'tiny-en' },
 };
-const APP_VERSION = 'v18';
+const APP_VERSION = 'v19';
 const TARGET_LANG = { 'ko-en': 'en-US', 'en-ko': 'ko-KR' };
 
 // 듣기 감도: 마이크가 말을 얼마나 쉽게 듣는지. 화면 표시는 소음 정도다:
-// 낮게(조용한 곳)=민감(작은 소리도 듣기, 임계값 = 소음 기준 ×3),
-// 보통=×6, 높게(시끄러운 곳)=둔감(시끄러운 곳에서 잡음 무시, ×10).
+// 낮게(조용한 곳)=민감(작은 소리도 듣기, 임계값 = 소음 기준 ×2),
+// 보통=×4, 높게(시끄러운 곳)=둔감(시끄러운 곳에서 잡음 무시, ×7).
 // 기본 보통. 선택은 폰에 저장한다.
-const SENSITIVITY = { high: 3, mid: 6, low: 10 };
+const SENSITIVITY = { high: 2, mid: 4, low: 7 };
 let sensitivity = 'mid';
 try { sensitivity = localStorage.getItem('ot-sensitivity') || 'mid'; } catch (_) {}
 if (!SENSITIVITY[sensitivity]) sensitivity = 'mid';
@@ -55,8 +55,7 @@ const els = {
   downloadBtn: $('downloadBtn'), downloadProgress: $('downloadProgress'),
   downloadBar: $('downloadBar'), downloadLabel: $('downloadLabel'),
   inputText: $('inputText'), micBtn: $('micBtn'), convBtn: $('convBtn'),
-  modeTranslateBtn: $('modeTranslateBtn'), modeDictateBtn: $('modeDictateBtn'),
-  listenAutoBtn: $('listenAutoBtn'), listenPttBtn: $('listenPttBtn'),
+  inputModeBtn: $('inputModeBtn'), listenModeBtn: $('listenModeBtn'),
   recognizedLabel: $('recognizedLabel'),
   translateBtn: $('translateBtn'), listening: $('listening'),
   listeningText: $('listeningText'), sendBtn: $('sendBtn'),
@@ -144,10 +143,11 @@ function setMode(next) {
     els.convBtn.textContent = '대화 모드';
   }
   inputMode = next;
-  els.modeTranslateBtn.setAttribute('aria-pressed', String(next === 'translate'));
-  els.modeDictateBtn.setAttribute('aria-pressed', String(next === 'dictate'));
+  // 각 버튼에 지금 모드만 보이고, 누르면 다른 모드로 바뀐다.
+  els.inputModeBtn.textContent = next === 'translate' ? '번역' : '받아쓰기';
   // 대화 모드는 번역 대화 기능이라 받아쓰기 모드에서는 안 보인다.
-  els.convBtn.hidden = next === 'dictate';
+  // 누를 때만 모드에서도 안 보인다 (떼면 바로 번역되니까).
+  els.convBtn.hidden = next === 'dictate' || listenMode === 'ptt';
   els.recognizedLabel.textContent = next === 'dictate'
     ? '받아쓴 글자 — 말할 때마다 이어붙습니다. 틀린 부분은 고치세요'
     : '인식된 글자 — 번역이 바로 나옵니다. 틀린 부분은 고치고 "번역하기"를 누르세요';
@@ -303,7 +303,12 @@ async function runTask(audio, mode) {
     const text = await transcribe(m.asr, audio, lang);
     // 그 사이 마이크를 눌러 새 작업이 시작됐으면 이 결과는 버린다.
     if (myRun !== runId) return;
-    if (!text) return;
+    // 인식 결과가 비어 나왔으면 조용히 버리지 않고 알려준다.
+    // (안 그러면 "인식 중…"만 뜨고 아무것도 안 뜨는 것처럼 보인다.)
+    if (!text) {
+      els.micHint.textContent = '잘 안 들렸어요. 다시 말해주세요. (마이크 가까이 말해보세요)';
+      return;
+    }
     // 인식 결과가 그 방향의 말이 아니면(예: 한국어 모드인데 한글이 하나도
     // 없으면) 잘못 들은 거라 번역하면 헛소리가 나온다. 번역하지 않고
     // 인식된 글자만 보여주고 다시 말하게 한다.
@@ -478,9 +483,15 @@ const LISTEN_HINT = {
   ptt: '마이크: 버튼을 누른 채로 말하고, 떼면 바로 인식합니다. (최대 30초)',
 };
 function updateListenModeUI() {
-  els.listenAutoBtn.setAttribute('aria-pressed', String(listenMode === 'auto'));
-  els.listenPttBtn.setAttribute('aria-pressed', String(listenMode === 'ptt'));
+  // 각 버튼에 지금 모드만 보이고, 누르면 다른 모드로 바뀐다.
+  els.listenModeBtn.textContent = listenMode === 'auto' ? '자동' : '누를 때만';
   els.micHint.textContent = LISTEN_HINT[listenMode];
+  // 누를 때만 모드에서는 대화 모드·번역하기 버튼이 필요 없다.
+  // 떼면 바로 번역되니까, 마이크와 감도만 남긴다.
+  els.convBtn.hidden = listenMode === 'ptt' || inputMode === 'dictate';
+  els.translateBtn.hidden = listenMode === 'ptt';
+  // 누를 때만 모드에서는 마이크 버튼을 더 크게, 누르기 편하게.
+  els.micBtn.classList.toggle('ptt-big', listenMode === 'ptt');
 }
 function setListenMode(next) {
   if (next !== 'auto' && next !== 'ptt') return;
@@ -495,9 +506,9 @@ els.sensHighBtn.addEventListener('click', () => setSensitivity('high'));
 els.sensMidBtn.addEventListener('click', () => setSensitivity('mid'));
 els.sensLowBtn.addEventListener('click', () => setSensitivity('low'));
 
-// ---- 버튼 연결 ----
-els.modeTranslateBtn.addEventListener('click', () => setMode('translate'));
-els.modeDictateBtn.addEventListener('click', () => setMode('dictate'));
+// 모드 버튼은 2개만 있다 — 각 버튼에 지금 모드만 보이고, 누르면 바뀐다.
+els.inputModeBtn.addEventListener('click', () => setMode(inputMode === 'translate' ? 'dictate' : 'translate'));
+els.listenModeBtn.addEventListener('click', () => setListenMode(listenMode === 'auto' ? 'ptt' : 'auto'));
 els.downloadBtn.addEventListener('click', () => ensureModels(direction).catch(() => {}));
 els.swapBtn.addEventListener('click', () => {
   direction = direction === 'ko-en' ? 'en-ko' : 'ko-en';
@@ -517,6 +528,9 @@ els.micBtn.addEventListener('pointerdown', (e) => {
   if (listenMode !== 'ptt') return;
   e.preventDefault();
   if (capture) return;
+  // 손가락을 버튼에 묶어둔다. 누른 채로 손가락이 버튼에서 벗어나도
+  // 떼기 전까지 녹음이 계속된다 (누르기 편하게).
+  try { els.micBtn.setPointerCapture(e.pointerId); } catch (_) {}
   els.micBtn.classList.add('holding');
   startCapture('single');
 });
@@ -536,8 +550,6 @@ els.micBtn.addEventListener('pointerup', () => { if (listenMode === 'ptt') endPt
 els.micBtn.addEventListener('pointercancel', () => { if (listenMode === 'ptt') endPtt(); });
 els.micBtn.addEventListener('pointerleave', () => { if (listenMode === 'ptt') endPtt(); });
 els.micBtn.addEventListener('contextmenu', (e) => e.preventDefault());
-els.listenAutoBtn.addEventListener('click', () => setListenMode('auto'));
-els.listenPttBtn.addEventListener('click', () => setListenMode('ptt'));
 els.convBtn.addEventListener('click', () => {
   if (convOn) {
     convOn = false;

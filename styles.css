@@ -116,6 +116,9 @@ textarea::placeholder { color: #80868B; }
 }
 .mic-btn.recording { background: #D93025; }
 .mic-btn.holding { background: #D93025; transform: scale(0.94); }
+/* 누를 때만 모드: 마이크 버튼을 더 크게, 누르기 편하게. */
+.mic-btn.ptt-big { width: 96px; height: 96px; }
+.mic-btn.ptt-big svg { width: 40px; height: 40px; }
 
 /* 듣는 중 표시 */
 .listening { display: flex; align-items: center; gap: 10px; margin-top: 12px; padding-top: 12px; border-top: 1px solid #DADCE0; }
