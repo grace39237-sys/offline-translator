@@ -29,7 +29,7 @@ const DIRECTIONS = {
   'ko-en': { from: '한국어', to: 'English', asr: ASR_MODEL_KO, asrLang: 'korean', mt: MT_MODEL_KO_EN, size: '약 190MB', sizeBytes: 190 * 1048576, asrLabel: 'base-ko' },
   'en-ko': { from: 'English', to: '한국어', asr: ASR_MODEL_EN, asrLang: 'english', mt: MT_MODEL_EN_KO, size: '약 300MB', sizeBytes: 300 * 1048576, asrLabel: 'tiny-en' },
 };
-const APP_VERSION = 'v20';
+const APP_VERSION = 'v21';
 const TARGET_LANG = { 'ko-en': 'en-US', 'en-ko': 'ko-KR' };
 
 // 듣기 감도: 마이크가 말을 얼마나 쉽게 듣는지. 화면 표시는 소음 정도다:

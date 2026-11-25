@@ -13,6 +13,9 @@ const MAX_UTTERANCE_SEC = 30; // 한 발화 최대 30초
 // (처음 1초에 말이 섞이면 기준이 말 소리만큼 부풀어서 그 뒤 말이
 // 임계값을 못 넘고 앱이 귀머거리가 된다 — 2026-11-24 실폰 보고.)
 const QUIET_ENERGY = 0.0002; // 이보다 큰 프레임은 말이 섞인 것으로 보고 제외
+// 입력 게인: 크롬 소리 처리를 끄면 자동 볼륨도 꺼지니까, 우리가 직접 키운다.
+// 조용한 목소리가 모델에 더 크게 닿는다. 2배(약 +6dB).
+const INPUT_GAIN = 2;
 const MIN_THRESHOLD = 0.0001; // 임계값 하한. 조용한 곳에서 소음 기준이
 // 낮아져도 이 아래로는 안 내려간다 — 이보다 작은 목소리는 인식이 못 듣는다
 // (2026-11-25 실폰 보고: 조용한 곳에서도 인식이 비어 나옴).
@@ -53,7 +56,11 @@ export class VoiceCapture {
   async start() {
     if (this.running) return;
     const stream = await navigator.mediaDevices.getUserMedia({
-      audio: { echoCancellation: true, noiseSuppression: true },
+      // 크롬 소리 처리를 끈다. 소음 제거·울림 제거·자동 볼륨이 적응하면서
+      // 조용한 목소리를 잡음으로 잘라내는 게 간헐적 인식 실패의 유력한 원인이다
+      // (2026-11-25 실폰 보고: 처음은 되고 5번 중 한두 번만 됨).
+      // 날것의 마이크 소리를 그대로 받고, 볼륨은 아래 게인으로 직접 키운다.
+      audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false },
     });
     // 마이크 권한을 받는 사이에 멈췄으면 시작하지 않는다.
     if (this.aborted) { stream.getTracks().forEach((t) => t.stop()); return; }
@@ -68,6 +75,9 @@ export class VoiceCapture {
       return;
     }
     const src = this.ctx.createMediaStreamSource(stream);
+    // 입력 게인: 크롬 자동 볼륨을 끈 대신 우리가 직접 2배로 키운다.
+    this.gainNode = this.ctx.createGain();
+    this.gainNode.gain.value = INPUT_GAIN;
     // EQ: 인식기에 들어가기 전에 보이스를 강화한다. 저음 웅웅거림을 자르고
     // 말소리가 제일 선명한 대역(2.5kHz)을 올린다. 강도는 감도(상/중/하)와 함께 간다.
     const eq = eqProfileForSensitivity(this.sensitivity);
@@ -80,7 +90,8 @@ export class VoiceCapture {
     this.peakFilter.Q.value = 1;
     this.peakFilter.gain.value = eq.peakGain;
     this.node = new AudioWorkletNode(this.ctx, 'vad-processor');
-    src.connect(this.hpFilter);
+    src.connect(this.gainNode);
+    this.gainNode.connect(this.hpFilter);
     this.hpFilter.connect(this.peakFilter);
     this.peakFilter.connect(this.node);
     this.node.port.onmessage = (e) => this._onChunk(e.data.data);
@@ -124,6 +135,7 @@ export class VoiceCapture {
     try { this.stream?.getTracks().forEach((t) => t.stop()); } catch (_) {}
     if (this.ctx) this.ctx.close().catch(() => {});
     this.node = null;
+    this.gainNode = null;
     this.hpFilter = null;
     this.peakFilter = null;
     this.ctx = null;
