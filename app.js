@@ -2,6 +2,7 @@
 import * as ort from 'onnxruntime-web';
 import { loadASR, transcribe, ASR_MODEL_KO, ASR_MODEL_EN } from './asr.js';
 import { loadMT, translate, MT_MODEL_KO_EN, MT_MODEL_EN_KO } from './mt.js';
+import { createPool } from './pool.js';
 import { VoiceCapture } from './vad.js';
 
 // 오프라인 동작: ONNX WASM 파일은 저장소에서 직접 가져온다.
@@ -29,7 +30,7 @@ const DIRECTIONS = {
   'ko-en': { from: '한국어', to: 'English', asr: ASR_MODEL_KO, asrLang: 'korean', mt: MT_MODEL_KO_EN, size: '약 190MB', sizeBytes: 190 * 1048576, asrLabel: 'base-ko' },
   'en-ko': { from: 'English', to: '한국어', asr: ASR_MODEL_EN, asrLang: 'english', mt: MT_MODEL_EN_KO, size: '약 300MB', sizeBytes: 300 * 1048576, asrLabel: 'tiny-en' },
 };
-const APP_VERSION = 'v21';
+const APP_VERSION = 'v22';
 const TARGET_LANG = { 'ko-en': 'en-US', 'en-ko': 'ko-KR' };
 
 // 듣기 감도: 마이크가 말을 얼마나 쉽게 듣는지. 화면 표시는 소음 정도다:
@@ -55,6 +56,8 @@ const els = {
   downloadBtn: $('downloadBtn'), downloadProgress: $('downloadProgress'),
   downloadBar: $('downloadBar'), downloadLabel: $('downloadLabel'),
   inputText: $('inputText'), micBtn: $('micBtn'), convBtn: $('convBtn'),
+  convMicRow: $('convMicRow'), convMicKoBtn: $('convMicKoBtn'), convMicEnBtn: $('convMicEnBtn'),
+  enhancedChk: $('enhancedChk'),
   inputModeBtn: $('inputModeBtn'), listenModeBtn: $('listenModeBtn'),
   recognizedLabel: $('recognizedLabel'),
   translateBtn: $('translateBtn'), listening: $('listening'),
@@ -78,6 +81,24 @@ const progressFiles = new Map();
 let capture = null;
 let captureMode = null; // 'single' | 'conv'
 let convOn = false;
+
+// 향상모드: 대화 모드에서 인식기를 2개로 복제해서 번갈아 쓴다.
+// (1번 차례는 1번 세션, 2번 차례는 2번 세션, 3번 차례는 다시 1번…)
+// 켜져 있으면 연속으로 말해도 차례가 버려지지 않고, 꺼져 있으면
+// 한 번에 하나씩 순서대로 처리한다. 선택은 폰에 저장한다 (기본 켜짐).
+let enhanced = true;
+try { enhanced = localStorage.getItem('ot-enhanced') !== '0'; } catch (_) {}
+let convDir = null; // 대화 모드에서 지금 듣는 방향 (null = 안 듣는 중)
+const convPools = {}; // `${dir}|${workers}` -> pool
+const convAsr2 = {}; // dir -> 두 번째 인식 세션 (향상모드용)
+// 번역은 방향마다 한 번에 하나씩 (같은 번역 세션에 두 번 동시 generate()를
+// 시키면 인식 세션처럼 서로 방해한다).
+const mtChains = { 'ko-en': Promise.resolve(), 'en-ko': Promise.resolve() };
+function translateSerialized(mt, text, dir) {
+  const p = mtChains[dir].then(() => translate(mt, text, dir));
+  mtChains[dir] = p.catch(() => {});
+  return p;
+}
 
 function setStatus(kind, text) {
   els.statusDot.className = `status-dot ${kind}`;
@@ -139,8 +160,8 @@ function setMode(next) {
   if (capture) stopCapture();
   if (convOn) {
     convOn = false;
-    els.convBtn.classList.remove('active');
-    els.convBtn.textContent = '대화 모드';
+    convDir = null;
+    updateConvUI();
   }
   inputMode = next;
   // 각 버튼에 지금 모드만 보이고, 누르면 다른 모드로 바뀐다.
@@ -250,7 +271,7 @@ async function doTranslate(srcText) {
   }
   setStatus('busy', '번역 중…');
   try {
-    const dst = await translate(models.mt, src, direction);
+    const dst = await translateSerialized(models.mt, src, direction);
     showResult(dst, src);
     saveHistory(src, dst);
     setStatus('ready', '오프라인 준비 완료');
@@ -284,21 +305,24 @@ function speak(text) {
 }
 
 // ---- 마이크 / 대화 모드 ----
-// 인식·번역은 한 번에 하나만 돈다. 같은 모델을 두 번 동시에 돌리면 둘 다 죽는다
-// (2026-11-24 실폰 보고: 7초 걸리는 인식 중에 다시 말하면 앞 작업이 중단됨).
-// 처리 중 새 발화가 들어오면 1개만 대기열에 둔다 (더 새 발화가 오면 갈아끼운다).
-// 마이크를 눌러 새 작업을 시작하면 runId가 올라가서 진행 중이던 옛날 작업의
-// 결과는 버려진다.
+// 한 문장씩 듣기: 인식·번역은 한 번에 하나만 돈다. 같은 모델을 두 번 동시에
+// 돌리면 둘 다 죽는다 (2026-11-24 실폰 보고: 7초 걸리는 인식 중에 다시
+// 말하면 앞 작업이 중단됨). 처리 중 새 발화가 들어오면 1개만 대기열에 둔다
+// (더 새 발화가 오면 갈아끼운다). 마이크를 눌러 새 작업을 시작하면 runId가
+// 올라가서 진행 중이던 옛날 작업의 결과는 버려진다.
+// 대화 모드: 풀(submitConvTurn)로 돈다. 차례마다 인식 세션을 번갈아 배정하고
+// (향상모드 켜짐: 2개, 꺼짐: 1개), 작업자가 바쁘면 기다리기만 하고 버리지 않는다.
 let processing = false;
 let queued = null;
 let runId = 0;
 
-async function runTask(audio, mode) {
+// 한 문장씩 듣기 전용. 대화 모드는 풀(submitConvTurn)로 따로 돈다.
+async function runTask(audio) {
   const myRun = runId;
   try {
     // 발화 받자마자 마이크를 끈다. 소리는 이미 받아뒀으니 인식에는 지장 없고,
     // 인식 중에 새 말이 들어와 앞 작업을 죽이는 일을 막는다.
-    if (mode === 'single') stopCapture();
+    stopCapture();
     setListeningUI(true, '인식 중…');
     const dirAtSpeech = direction;
     const m = await ensureModels(dirAtSpeech);
@@ -317,37 +341,30 @@ async function runTask(audio, mode) {
     // 인식된 글자만 보여주고 다시 말하게 한다.
     const looksRight = dirAtSpeech === 'ko-en' ? /[가-힣]/.test(text) : /[a-zA-Z]/.test(text);
     if (!looksRight) {
-      if (mode === 'single' && inputMode !== 'dictate') {
+      if (inputMode !== 'dictate') {
         els.recognizedText.value = text;
         els.recognizedWrap.hidden = false;
       }
       els.micHint.textContent = '잘 안 들렸어요. 다시 말해주세요. (주변 소음이 있으면 조용한 곳에서 해보세요)';
       return;
     }
-    if (mode === 'single') {
-      if (inputMode === 'dictate') {
-        // 받아쓰기 모드: 인식된 글자를 이어붙이고 계속 듣는다. 번역은 안 한다.
-        const prev = els.recognizedText.value.trim();
-        els.recognizedText.value = prev ? `${prev} ${text}` : text;
-        els.recognizedWrap.hidden = false;
-      } else {
-        els.recognizedText.value = text;
-        els.recognizedWrap.hidden = false;
-        // 인식된 글자를 보여주면서 바로 번역도 한다.
-        // (틀렸으면 고치고 아래 "번역하기"를 누르면 다시 번역된다.)
-        await doTranslate(text);
-      }
+    if (inputMode === 'dictate') {
+      // 받아쓰기 모드: 인식된 글자를 이어붙이고 계속 듣는다. 번역은 안 한다.
+      const prev = els.recognizedText.value.trim();
+      els.recognizedText.value = prev ? `${prev} ${text}` : text;
+      els.recognizedWrap.hidden = false;
     } else {
-      await addConvTurn(text, dirAtSpeech);
+      els.recognizedText.value = text;
+      els.recognizedWrap.hidden = false;
+      // 인식된 글자를 보여주면서 바로 번역도 한다.
+      // (틀렸으면 고치고 아래 "번역하기"를 누르면 다시 번역된다.)
+      await doTranslate(text);
     }
   } catch (e) {
     console.error(e);
     if (myRun === runId) setListeningUI(true, `인식 실패: ${e.message}`);
   } finally {
-    if (myRun === runId) {
-      if (mode === 'single') setListeningUI(false);
-      else setListeningUI(true, '대화 모드 — 듣는 중… 보내기를 누르면 그 차례를 바로 번역합니다');
-    }
+    if (myRun === runId) setListeningUI(false);
   }
 }
 
@@ -355,7 +372,9 @@ function setListeningUI(on, text) {
   els.listening.hidden = !on;
   if (text) els.listeningText.textContent = text;
   els.micBtn.classList.toggle('recording', on && captureMode === 'single');
-  els.convBtn.classList.toggle('active', on && captureMode === 'conv');
+  // 대화 모드에서는 지금 듣는 언어 버튼이 빨갛게 보인다.
+  els.convMicKoBtn.classList.toggle('recording', on && captureMode === 'conv' && convDir === 'ko-en');
+  els.convMicEnBtn.classList.toggle('recording', on && captureMode === 'conv' && convDir === 'en-ko');
 }
 
 function setBars(level) {
@@ -377,12 +396,15 @@ async function startCapture(mode) {
     onSpeechStart: () => setListeningUI(true, '듣고 있어요…'),
     onSpeechEnd: () => setListeningUI(true, mode === 'conv' ? '대화 모드 — 듣는 중… 보내기를 누르면 그 차례를 바로 번역합니다' : '듣는 중… 보내기를 누르면 바로 인식합니다'),
     onUtterance: async (audio) => {
-      // 처리 중이면 1개만 대기열에 둔다 (더 새 발화가 오면 갈아끼운다).
-      if (processing) { queued = { audio, mode }; return; }
+      // 대화 모드: 풀에 넘긴다. 차례마다 작업자를 번갈아 배정하고,
+      // 작업자가 바쁘면 기다리기만 하고 버려지지 않는다.
+      if (mode === 'conv') { submitConvTurn(audio, direction); return; }
+      // 한 문장씩: 처리 중이면 1개만 대기열에 둔다 (더 새 발화가 오면 갈아끼운다).
+      if (processing) { queued = { audio }; return; }
       processing = true;
-      let current = { audio, mode };
+      let current = { audio };
       while (current) {
-        await runTask(current.audio, current.mode);
+        await runTask(current.audio);
         current = queued;
         queued = null;
       }
@@ -416,25 +438,70 @@ function stopCapture() {
   setBars(0);
 }
 
-function addConvTurn(srcText, dirAtSpeech) {
+// ---- 대화 모드: 차례 카드 + 향상모드 풀 ----
+// 대화 차례 카드는 발화가 들어온 순서대로 만든다 (인식 전, "인식 중…" 표시).
+// 인식·번역이 끝나면 그 카드에 채운다. 나중에 온 차례가 먼저 끝나도
+// 카드 순서는 말한 순서 그대로다 (목록은 새 차례가 위로 간다).
+function createConvTurnCard(dirAtSpeech) {
   els.convWrap.hidden = false;
   const li = document.createElement('li');
   li.dataset.dir = dirAtSpeech;
-  li.innerHTML = `<div class="src"></div><div class="dst">번역 중…</div><div class="meta"></div>`;
-  li.querySelector('.src').textContent = srcText;
+  li.innerHTML = `<div class="src">인식 중…</div><div class="dst">번역 중…</div><div class="meta"></div>`;
   const d = DIRECTIONS[dirAtSpeech];
   li.querySelector('.meta').textContent = `${d.from} → ${d.to} · 탭해서 고치기`;
   els.convList.prepend(li);
-  return (async () => {
-    try {
-      const m = await ensureModels(dirAtSpeech);
-      const dst = await translate(m.mt, srcText, dirAtSpeech);
-      li.querySelector('.dst').textContent = dst;
-      saveHistory(srcText, dst, dirAtSpeech);
-    } catch (e) {
-      li.querySelector('.dst').textContent = `번역 실패: ${e.message}`;
+  return li;
+}
+
+// 향상모드용 두 번째 인식 세션 (방향마다 하나). 다운로드는 한 번만 받고,
+// 세션만 두 개로 나눠 쓴다. 꺼져 있으면 0번 세션만 쓴다.
+async function convASR(dir, workerIdx) {
+  const m = await ensureModels(dir);
+  if (workerIdx === 0) return m.asr;
+  if (!convAsr2[dir]) convAsr2[dir] = await loadASR(DIRECTIONS[dir].asr, onProgress, 1);
+  return convAsr2[dir];
+}
+
+function convPoolFor(dir) {
+  const workers = enhanced ? 2 : 1;
+  const key = `${dir}|${workers}`;
+  if (!convPools[key]) convPools[key] = createPool(workers);
+  return convPools[key];
+}
+
+// 한 차례 처리: 인식(풀의 작업자 세션) → 번역(방향마다 한 번에 하나씩).
+// 결과는 이 차례의 카드에 채운다. 실패해도 카드에 이유를 적고 끝낸다.
+async function processConvTurn(audio, dir, card, workerIdx) {
+  const srcEl = card.querySelector('.src');
+  const dstEl = card.querySelector('.dst');
+  try {
+    const asr = await convASR(dir, workerIdx);
+    const text = await transcribe(asr, audio, DIRECTIONS[dir].asrLang);
+    if (!text) {
+      srcEl.textContent = '잘 안 들렸어요. 다시 말해주세요.';
+      dstEl.textContent = '';
+      return;
     }
-  })();
+    const looksRight = dir === 'ko-en' ? /[가-힣]/.test(text) : /[a-zA-Z]/.test(text);
+    if (!looksRight) {
+      srcEl.textContent = text;
+      dstEl.textContent = '잘 안 들렸어요. 다시 말해주세요. (주변 소음이 있으면 조용한 곳에서 해보세요)';
+      return;
+    }
+    srcEl.textContent = text;
+    const m = await ensureModels(dir);
+    const dst = await translateSerialized(m.mt, text, dir);
+    dstEl.textContent = dst;
+    saveHistory(text, dst, dir);
+  } catch (e) {
+    console.error(e);
+    dstEl.textContent = `인식 실패: ${e.message}`;
+  }
+}
+
+function submitConvTurn(audio, dir) {
+  const card = createConvTurnCard(dir);
+  convPoolFor(dir).submit((workerIdx) => processConvTurn(audio, dir, card, workerIdx));
 }
 
 // 대화 말풍선 고치기: 원문을 탭하면 수정 가능, 벗어나면 다시 번역
@@ -456,7 +523,7 @@ els.convList.addEventListener('focusout', async (e) => {
   li.querySelector('.dst').textContent = '번역 중…';
   try {
     const m = await ensureModels(dirAtSpeech);
-    const dst = await translate(m.mt, newSrc, dirAtSpeech);
+    const dst = await translateSerialized(m.mt, newSrc, dirAtSpeech);
     li.querySelector('.dst').textContent = dst;
     saveHistory(newSrc, dst, dirAtSpeech);
   } catch (err) {
@@ -561,16 +628,77 @@ els.micBtn.addEventListener('pointerup', () => { if (listenMode === 'ptt') endPt
 els.micBtn.addEventListener('pointercancel', () => { if (listenMode === 'ptt') endPtt(); });
 els.micBtn.addEventListener('pointerleave', () => { if (listenMode === 'ptt') endPtt(); });
 els.micBtn.addEventListener('contextmenu', (e) => e.preventDefault());
-els.convBtn.addEventListener('click', () => {
+// ---- 대화 모드 UI (마이크 버튼 2개 + 향상모드) ----
+function updateConvUI() {
+  els.convBtn.textContent = convOn ? '대화 모드 켜짐' : '대화 모드';
+  els.convBtn.classList.toggle('active', convOn);
+  // 대화 모드에서는 마이크 버튼 2개(한국어/English)가 마이크다.
+  // 한 문장씩 하는 마이크·방향 바꾸기·모드 버튼은 안 보인다.
+  els.micBtn.hidden = convOn;
+  els.convMicRow.hidden = !convOn;
+  els.swapBtn.hidden = convOn;
+  els.inputModeBtn.hidden = convOn;
+  els.listenModeBtn.hidden = convOn;
+}
+
+// 대화 모드에 들어갈 때 양쪽 방향 모델이 있는지 확인하고,
+// 없는 방향이 있으면 받으라고 안내한다.
+async function checkConvModels() {
+  const missing = [];
+  for (const dir of ['ko-en', 'en-ko']) {
+    const d = DIRECTIONS[dir];
+    const ok = (await hasCachedModel(d.asr)) && (await hasCachedModel(d.mt));
+    if (!ok) missing.push(d);
+  }
+  if (missing.length) {
+    const names = missing.map((d) => `${d.from} → ${d.to}`).join(', ');
+    els.micHint.textContent = `대화 모드: ${names} 모델이 없습니다. 해당 언어 마이크 버튼을 누르면 받아요. (처음 한 번만 인터넷 필요)`;
+  } else {
+    els.micHint.textContent = '대화 모드: 한국어 버튼은 한국어로 듣고 영어로, English 버튼은 영어로 듣고 한국어로 번역해요.';
+  }
+}
+
+// 대화 모드 언어 마이크: 같은 버튼을 다시 누르면 듣기를 멈추고,
+// 다른 버튼을 누르면 그 언어로 바꿔서 계속 듣는다.
+async function toggleConvMic(dir) {
+  if (capture && captureMode === 'conv' && convDir === dir) {
+    stopCapture();
+    convDir = null;
+    setListeningUI(false);
+    return;
+  }
+  if (capture) stopCapture();
+  direction = dir;
+  convDir = dir;
+  updateModelBox(); // 언어 바·모델 박스를 이 방향으로 맞춘다.
+  // 모델이 없으면 받으라고 안내하고, 받으면 듣기를 시작한다.
+  if (!loaded[dir]) {
+    els.micHint.textContent = `${DIRECTIONS[dir].from} → ${DIRECTIONS[dir].to} 모델을 받는 중이에요. 받으면 바로 듣기 시작해요.`;
+    try { await ensureModels(dir); } catch (_) { return; }
+  }
+  startCapture('conv');
+}
+els.convMicKoBtn.addEventListener('click', () => toggleConvMic('ko-en'));
+els.convMicEnBtn.addEventListener('click', () => toggleConvMic('en-ko'));
+els.enhancedChk.addEventListener('change', () => {
+  enhanced = els.enhancedChk.checked;
+  try { localStorage.setItem('ot-enhanced', enhanced ? '1' : '0'); } catch (_) {}
+  // 다음 차례부터 새 풀이 쓰인다. 진행 중인 차례는 옛날 풀에서 끝까지 간다.
+  for (const k of Object.keys(convPools)) delete convPools[k];
+});
+els.convBtn.addEventListener('click', async () => {
   if (convOn) {
     convOn = false;
     stopCapture();
-    els.convBtn.classList.remove('active');
-    els.convBtn.textContent = '대화 모드';
+    convDir = null;
+    updateConvUI();
+    setListeningUI(false);
+    els.micHint.textContent = LISTEN_HINT[listenMode];
   } else {
     convOn = true;
-    els.convBtn.textContent = '대화 모드 켜짐';
-    startCapture('conv');
+    updateConvUI();
+    await checkConvModels();
+    // 듣기는 언어 버튼을 눌러서 시작한다 (방향을 골라야 하니까).
   }
 });
 els.sendBtn.addEventListener('click', () => {
@@ -649,4 +777,6 @@ renderHistory();
 updateModelBox();
 updateSensitivityUI();
 updateListenModeUI();
+els.enhancedChk.checked = enhanced;
+updateConvUI();
 autoLoadSavedModels();

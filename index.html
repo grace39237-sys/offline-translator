@@ -55,6 +55,24 @@
       <button id="convBtn" class="btn" type="button" disabled>대화 모드</button>
       <button id="translateBtn" class="btn primary" type="button">번역하기</button>
     </div>
+    <!-- 대화 모드 마이크 버튼 2개 (한국어 / English) + 향상모드 -->
+    <div id="convMicRow" hidden>
+      <div class="conv-mic-btns">
+        <div class="conv-mic">
+          <button id="convMicKoBtn" class="mic-btn" type="button" aria-label="한국어로 듣기">
+            <svg viewBox="0 0 24 24" width="30" height="30" aria-hidden="true"><path fill="currentColor" d="M12 15a3.5 3.5 0 0 0 3.5-3.5v-6a3.5 3.5 0 1 0-7 0v6A3.5 3.5 0 0 0 12 15zm6-3.5a6 6 0 0 1-12 0H4a8 8 0 0 0 7 7.94V22h2v-2.06a8 8 0 0 0 7-7.94h-2z"/></svg>
+          </button>
+          <span>한국어</span>
+        </div>
+        <div class="conv-mic">
+          <button id="convMicEnBtn" class="mic-btn" type="button" aria-label="영어로 듣기">
+            <svg viewBox="0 0 24 24" width="30" height="30" aria-hidden="true"><path fill="currentColor" d="M12 15a3.5 3.5 0 0 0 3.5-3.5v-6a3.5 3.5 0 1 0-7 0v6A3.5 3.5 0 0 0 12 15zm6-3.5a6 6 0 0 1-12 0H4a8 8 0 0 0 7 7.94V22h2v-2.06a8 8 0 0 0 7-7.94h-2z"/></svg>
+          </button>
+          <span>English</span>
+        </div>
+      </div>
+      <label class="enhanced-row"><input id="enhancedChk" type="checkbox" checked> 향상모드 — 연속으로 말해도 안 버려요</label>
+    </div>
     <div id="listening" class="listening" hidden>
       <span class="pulse-dot" aria-hidden="true"></span>
       <span class="bars" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></span>

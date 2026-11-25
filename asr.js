@@ -28,8 +28,11 @@ const TOKENS_PER_SEC = 16;
 
 const cache = new Map();
 
-export async function loadASR(modelId, onProgress) {
-  if (cache.has(modelId)) return cache.get(modelId);
+// instance: 같은 모델을 두 번 불러올 때 구분한다 (향상모드 — 대화 모드에서
+// 인식 세션 2개로 번갈아 쓰기). 파일은 캐시에서 한 번만 받고 세션만 두 개다.
+export async function loadASR(modelId, onProgress, instance = 0) {
+  const key = `${modelId}#${instance}`;
+  if (cache.has(key)) return cache.get(key);
   const [model, tokenizer, featureExtractor] = await Promise.all([
     AutoModelForSpeechSeq2Seq.from_pretrained(modelId, { dtype: 'q8', progress_callback: onProgress }),
     AutoTokenizer.from_pretrained(modelId, { progress_callback: onProgress }),
@@ -37,7 +40,7 @@ export async function loadASR(modelId, onProgress) {
   ]);
   const processor = new MoonshineProcessor({}, { tokenizer, feature_extractor: featureExtractor });
   const asr = { model, processor };
-  cache.set(modelId, asr);
+  cache.set(key, asr);
   return asr;
 }
 
