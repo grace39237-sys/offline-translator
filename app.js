@@ -29,7 +29,7 @@ const DIRECTIONS = {
   'ko-en': { from: '한국어', to: 'English', asr: ASR_MODEL_KO, asrLang: 'korean', mt: MT_MODEL_KO_EN, size: '약 190MB', sizeBytes: 190 * 1048576, asrLabel: 'base-ko' },
   'en-ko': { from: 'English', to: '한국어', asr: ASR_MODEL_EN, asrLang: 'english', mt: MT_MODEL_EN_KO, size: '약 300MB', sizeBytes: 300 * 1048576, asrLabel: 'tiny-en' },
 };
-const APP_VERSION = 'v19';
+const APP_VERSION = 'v20';
 const TARGET_LANG = { 'ko-en': 'en-US', 'en-ko': 'ko-KR' };
 
 // 듣기 감도: 마이크가 말을 얼마나 쉽게 듣는지. 화면 표시는 소음 정도다:
@@ -144,16 +144,19 @@ function setMode(next) {
   }
   inputMode = next;
   // 각 버튼에 지금 모드만 보이고, 누르면 다른 모드로 바뀐다.
-  els.inputModeBtn.textContent = next === 'translate' ? '번역' : '받아쓰기';
+  // (큰 글씨만 바꾸고, 밑의 작은 글씨는 그대로 둔다.)
+  els.inputModeBtn.querySelector('.mode-main').textContent = next === 'translate' ? '번역' : '받아쓰기';
   // 대화 모드는 번역 대화 기능이라 받아쓰기 모드에서는 안 보인다.
   // 누를 때만 모드에서도 안 보인다 (떼면 바로 번역되니까).
   els.convBtn.hidden = next === 'dictate' || listenMode === 'ptt';
   els.recognizedLabel.textContent = next === 'dictate'
     ? '받아쓴 글자 — 말할 때마다 이어붙습니다. 틀린 부분은 고치세요'
     : '인식된 글자 — 번역이 바로 나옵니다. 틀린 부분은 고치고 "번역하기"를 누르세요';
-  els.micHint.textContent = next === 'dictate'
-    ? '마이크: 말하고 보내기를 누르면 아래에 이어붙습니다. 0.9초 침묵 뒤에도 자동으로 인식돼요. (최대 30초)'
-    : '마이크: 말하고 보내기를 누르면 바로 인식합니다. 0.9초 침묵 뒤에도 자동으로 인식돼요. (최대 30초)';
+  // 힌트는 듣기 방식이 정한다 (누를 때만 모드에서는 침묵·보내기 얘기가 안 맞는다).
+  els.micHint.textContent = listenMode === 'ptt' ? LISTEN_HINT.ptt
+    : next === 'dictate'
+      ? '마이크: 말하고 보내기를 누르면 아래에 이어붙습니다. 0.9초 침묵 뒤에도 자동으로 인식돼요. (최대 30초)'
+      : '마이크: 말하고 보내기를 누르면 바로 인식합니다. 0.9초 침묵 뒤에도 자동으로 인식돼요. (최대 30초)';
 }
 
 async function ensureModels(dir) {
@@ -365,7 +368,7 @@ function setBars(level) {
 
 async function startCapture(mode) {
   const models = await ensureModels(direction);
-  capture = new VoiceCapture({
+  const cap = new VoiceCapture({
     onLevel: (l) => setBars(l),
     sensitivity: SENSITIVITY[sensitivity],
     // 누를 때만 모드에서는 버튼을 누른 채로만 녹음한다 (대화 모드는 자동 그대로).
@@ -386,14 +389,19 @@ async function startCapture(mode) {
       processing = false;
     },
   });
+  capture = cap;
   try {
-    await capture.start();
+    await cap.start();
   } catch (e) {
     console.error(e);
     els.micHint.textContent = '마이크 권한을 허용해 주세요. (브라우저 주소창의 자물쇠 → 마이크 허용)';
-    capture = null;
+    // 그 사이에 새 마이크가 켜졌으면 그건 건드리지 않는다.
+    if (capture === cap) capture = null;
     return;
   }
+  // 시작 도중에 멈췄으면(짧게 누르고 뗐으면) 이 마이크는 이미 정리됐다.
+  // 새로 켠 것처럼 굴지 않는다.
+  if (capture !== cap) return;
   captureMode = mode;
   // 마이크를 새로 켜면 진행 중이던 옛날 작업의 결과는 버린다 (새 작업이 우선).
   runId++;
@@ -484,12 +492,15 @@ const LISTEN_HINT = {
 };
 function updateListenModeUI() {
   // 각 버튼에 지금 모드만 보이고, 누르면 다른 모드로 바뀐다.
-  els.listenModeBtn.textContent = listenMode === 'auto' ? '자동' : '누를 때만';
+  // (큰 글씨만 바꾸고, 밑의 작은 글씨는 그대로 둔다.)
+  els.listenModeBtn.querySelector('.mode-main').textContent = listenMode === 'auto' ? '자동' : '누를 때만';
   els.micHint.textContent = LISTEN_HINT[listenMode];
   // 누를 때만 모드에서는 대화 모드·번역하기 버튼이 필요 없다.
   // 떼면 바로 번역되니까, 마이크와 감도만 남긴다.
   els.convBtn.hidden = listenMode === 'ptt' || inputMode === 'dictate';
   els.translateBtn.hidden = listenMode === 'ptt';
+  // 누를 때만 모드에서는 친 텍스트 입력 칸도 안 보인다 (말로만 쓴다).
+  els.inputText.hidden = listenMode === 'ptt';
   // 누를 때만 모드에서는 마이크 버튼을 더 크게, 누르기 편하게.
   els.micBtn.classList.toggle('ptt-big', listenMode === 'ptt');
 }

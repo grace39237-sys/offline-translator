@@ -43,6 +43,10 @@ export class VoiceCapture {
     // ptt (누를 때만): 버튼을 누른 채로만 녹음한다. 소음 기준을 재지 않고
     // 침묵으로 자동 종료하지도 않는다 — 떼면 flush()로 바로 넘긴다.
     this.ptt = !!ptt;
+    // 시작 도중에 stop()이 들어오면 중단된 것으로 표시한다. 시작 쪽은
+    // 비동기라 멈춤 뒤에도 끝까지 갈 수 있는데, 이때 마이크가 앱 모르게
+    // 켜져서 "듣고 있어요"가 혼자 뜨는 버그가 있다 (2026-11-25 실폰 보고).
+    this.aborted = false;
     this.running = false;
   }
 
@@ -51,9 +55,18 @@ export class VoiceCapture {
     const stream = await navigator.mediaDevices.getUserMedia({
       audio: { echoCancellation: true, noiseSuppression: true },
     });
+    // 마이크 권한을 받는 사이에 멈췄으면 시작하지 않는다.
+    if (this.aborted) { stream.getTracks().forEach((t) => t.stop()); return; }
     this.stream = stream;
     this.ctx = new AudioContext();
     await this.ctx.audioWorklet.addModule('./vad-processor.js');
+    // 작업자 모듈을 받는 사이에 멈췄으면 정리하고 시작하지 않는다.
+    if (this.aborted) {
+      stream.getTracks().forEach((t) => t.stop());
+      this.ctx.close().catch(() => {});
+      this.ctx = null;
+      return;
+    }
     const src = this.ctx.createMediaStreamSource(stream);
     // EQ: 인식기에 들어가기 전에 보이스를 강화한다. 저음 웅웅거림을 자르고
     // 말소리가 제일 선명한 대역(2.5kHz)을 올린다. 강도는 감도(상/중/하)와 함께 간다.
@@ -89,6 +102,8 @@ export class VoiceCapture {
     this.speechStart = 0;
     this.speechEnd = 0;
     this.utterance = [];
+    // 체인을 다 만든 뒤에 멈췄으면 켜지 않고 정리한다.
+    if (this.aborted) { this.stop(); return; }
     this.running = true;
   }
 
@@ -101,6 +116,9 @@ export class VoiceCapture {
   }
 
   stop() {
+    // 시작 도중에 멈췄음을 표시한다. start()의 남은 단계가 이를 보고
+    // 중단한다.
+    this.aborted = true;
     this.running = false;
     try { this.node?.disconnect(); } catch (_) {}
     try { this.stream?.getTracks().forEach((t) => t.stop()); } catch (_) {}
@@ -112,7 +130,7 @@ export class VoiceCapture {
   }
 
   _onChunk(chunk) {
-    if (!this.running) return;
+    if (!this.running || this.aborted) return;
     // 48kHz(보통) → 16kHz: 박스 평균으로 다운샘플
     const step = this.resampleStep;
     let acc = 0;
@@ -131,6 +149,9 @@ export class VoiceCapture {
   }
 
   _onSample(v) {
+    // 멈춘 캡처는 들어오는 소리를 버린다 (시작 도중 멈춘 뒤에도
+    // 남은 프레임이 "듣고 있어요"를 띄우는 것을 막는다).
+    if (this.aborted) return;
     this.preRoll.push(v);
     if (this.preRoll.length > PRE_ROLL) this.preRoll.shift();
     this.frames.push(v);

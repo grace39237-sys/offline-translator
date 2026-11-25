@@ -83,7 +83,11 @@ textarea::placeholder { color: #80868B; }
 .mode-switch button {
   flex: 1; border: 1px solid #1A73E8; background: #FFFFFF; color: #1A73E8;
   padding: 9px 8px; min-height: 44px; font-weight: 500;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  line-height: 1.35;
 }
+/* 버튼 밑의 작은 글씨 — 두 모드를 알려준다 (큰 글씨는 지금 모드만). */
+.mode-switch .mode-sub { font-size: 11px; font-weight: 400; opacity: 0.75; }
 .mode-switch button:first-child { border-radius: 20px 0 0 20px; }
 .mode-switch button:last-child { border-radius: 0 20px 20px 0; }
 .mode-switch button + button { border-left: none; }
